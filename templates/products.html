@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}商品一覧 | たこ焼き在庫管理{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1>商品（PRODUCTS）</h1>
+    <a class="btn" href="{{ url_for('products_new') }}">＋ 新規登録</a>
+  </div>
+
+  <div class="filters">
+    <span>表示：</span>
+    <a class="chip {% if show=='active' %}chip--active{% endif %}" href="{{ url_for('products_index', show='active') }}">有効のみ</a>
+    <a class="chip {% if show=='inactive' %}chip--active{% endif %}" href="{{ url_for('products_index', show='inactive') }}">無効のみ</a>
+    <a class="chip {% if show=='all' %}chip--active{% endif %}" href="{{ url_for('products_index', show='all') }}">すべて</a>
+  </div>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>商品名</th>
+        <th>1セット個数</th>
+        <th>状態</th>
+        <th>作成日時</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in products %}
+      <tr>
+        <td>{{ p["product_id"] }}</td>
+        <td>{{ p["name"] }}</td>
+        <td>{{ p["pieces_per_set"] }}</td>
+        <td>
+          {% if p["is_active"] == 1 %}
+            <span class="badge badge--ok">有効</span>
+          {% else %}
+            <span class="badge badge--ng">無効</span>
+          {% endif %}
+        </td>
+        <td>{{ p["created_at"] }}</td>
+        <td class="actions">
+          <form method="post" action="{{ url_for('products_toggle', product_id=p['product_id'], show=show) }}">
+            <button class="btn btn--sub" type="submit">
+              {% if p["is_active"] == 1 %}無効にする{% else %}有効にする{% endif %}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+
+      {% if products|length == 0 %}
+      <tr><td colspan="6" class="muted">データがありません。</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+{% endblock %}
