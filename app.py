@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from itertools import groupby
+import math
 from flask import Flask, g, redirect, render_template, request, url_for, flash, abort
 
 APP_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -406,6 +407,17 @@ def purchase_create():
             errors.append(f"{idx}行目：数量(qty)は0より大きくしてください。")
             continue
 
+        item_row = db.execute(
+            "SELECT name, unit_base FROM items WHERE item_id = ?",
+            (item_id,),
+        ).fetchone()
+        if item_row is None:
+            errors.append(f"{idx}行目：材料IDが存在しません。")
+            continue
+        if item_row["unit_base"] == "pcs" and not qty.is_integer():
+            errors.append(f"{idx}行目：{item_row['name']} はpcsなので整数で入力してください。")
+            continue
+
         unit_price: float | None = None
         if unit_price_raw != "":
             try:
@@ -504,6 +516,74 @@ def purchase_create():
 
     flash("入庫（仕入れ）を登録しました。", "success")
     return redirect(url_for("purchase_detail", purchase_id=purchase_id))
+
+
+@app.post("/purchases/new-from-list")
+def purchase_new_from_list():
+    db = get_db()
+
+    supplier_id_raw = (request.form.get("supplier_id") or "").strip()
+    supplier_id = int(supplier_id_raw) if supplier_id_raw else None
+
+    location = (request.form.get("location") or "STORE").strip()
+    if location not in ("STORE", "WAREHOUSE"):
+        location = "STORE"
+
+    # チェックされた材料
+    selected_item_ids_raw = request.form.getlist("selected_item_ids")
+    selected_item_ids = []
+    for x in selected_item_ids_raw:
+        try:
+            selected_item_ids.append(int(x))
+        except ValueError:
+            pass
+
+    if not selected_item_ids:
+        flash("チェックされた材料がありません。", "error")
+        # 買い物リストに戻す（locationは保持）
+        return redirect(url_for("shopping_list", location=location))
+
+    prefill_lines = []
+    for item_id in selected_item_ids[:10]:  # purchase_new.html が10行固定なので最大10件
+        qty_raw = (request.form.get(f"qty_{item_id}") or "").strip()
+        unit_price_raw = (request.form.get(f"unit_price_{item_id}") or "").strip()
+
+        try:
+            qty = float(qty_raw) if qty_raw else 0.0
+        except ValueError:
+            qty = 0.0
+
+        # 単価は任意
+        unit_price = None
+        if unit_price_raw != "":
+            try:
+                unit_price = float(unit_price_raw)
+            except ValueError:
+                unit_price = None
+
+        prefill_lines.append(
+            {
+                "item_id": item_id,
+                "qty": qty,
+                "unit_price": unit_price,
+            }
+        )
+
+    suppliers = fetch_suppliers()
+    items = fetch_active_items()
+
+    # ちょい親切：メモに「買い物リストから」入れとく
+    default_note = "買い物リストから作成"
+
+    return render_template(
+        "purchase_new.html",
+        suppliers=suppliers,
+        items=items,
+        prefill_lines=prefill_lines,
+        default_supplier_id=supplier_id,
+        default_location=location,
+        default_note=default_note,
+    )
 
 
 @app.get("/purchases/<int:purchase_id>")
@@ -668,6 +748,17 @@ def purchase_update(purchase_id: int):
             errors.append(f"{idx}行目：数量(qty)は0より大きくしてください。")
             continue
 
+        item_row = db.execute(
+            "SELECT name, unit_base FROM items WHERE item_id = ?",
+            (item_id,),
+        ).fetchone()
+        if item_row is None:
+            errors.append(f"{idx}行目：材料IDが存在しません。")
+            continue
+        if item_row["unit_base"] == "pcs" and not qty.is_integer():
+            errors.append(f"{idx}行目：{item_row['name']} はpcsなので整数で入力してください。")
+            continue
+
         unit_price: float | None = None
         if unit_price_raw != "":
             try:
@@ -822,7 +913,14 @@ def fetch_items_for_stocktake(only_food: bool) -> list[sqlite3.Row]:
             WHERE is_active = 1
             ORDER BY name ASC
             """
-        ).fetchall()
+    ).fetchall()
+
+
+def ceil_to_step(x: float, step: float) -> float:
+    if step <= 0:
+        return x
+    # 浮動小数の誤差対策で少しだけ下げてからceil
+    return math.ceil((x - 1e-12) / step) * step
 
 
 @app.get("/stocktakes")
@@ -1284,43 +1382,20 @@ def transfer_detail(transfer_id: int):
 # -----------------------------
 @app.get("/shopping-list")
 def shopping_list():
-    # STORE（店舗）/ WAREHOUSE（倉庫）/ TOTAL（合算）
-    location = (request.args.get("location") or "STORE").upper()
-    if location not in ("STORE", "WAREHOUSE", "TOTAL"):
-        location = "STORE"
-
-    include_food = (request.args.get("include_food") or "1") != "0"  # 1: FOODも含める
-    exclude_fixed = (request.args.get("exclude_fixed") or "0") == "1"  # 1: 固定を除外
-
     db = get_db()
 
-    # 在庫集計CTE（location別 or 合算）
-    if location == "TOTAL":
-        inv_cte = """
-        WITH inv AS (
-          SELECT item_id, SUM(qty_delta) AS qty
-          FROM inventory_tx
-          GROUP BY item_id
-        )
-        """
-        inv_params = ()
-    else:
-        inv_cte = """
-        WITH inv AS (
-          SELECT item_id, SUM(qty_delta) AS qty
-          FROM inventory_tx
-          WHERE location = ?
-          GROUP BY item_id
-        )
-        """
-        inv_params = (location,)
+    # 在庫集計CTE（常に合算）
+    inv_cte = """
+    WITH inv AS (
+      SELECT item_id, SUM(qty_delta) AS qty
+      FROM inventory_tx
+      GROUP BY item_id
+    )
+    """
+    inv_params = ()
 
     # フィルタ条件
     cond = ["i.is_active = 1"]
-    if not include_food:
-        cond.append("i.cost_group = 'SUPPLIES'")
-    if exclude_fixed:
-        cond.append("i.is_fixed = 0")
 
     where_sql = " AND ".join(cond)
 
@@ -1353,33 +1428,37 @@ def shopping_list():
     grouped = []
     for supplier_name, group in groupby(rows, key=lambda r: r["supplier_name"]):
         items = []
+        est_sum = 0.0
         for r in group:
             reorder_point = float(r["reorder_point"] or 0)
             qty = float(r["qty"] or 0)
-            order_qty = max(reorder_point - qty, 0.0)
+            shortage = max(reorder_point - qty, 0.0)
+            step = 1.0 if (r["unit_base"] == "pcs") else 0.01
+            order_qty = ceil_to_step(shortage, step)
             ref_price = float(r["ref_unit_price"] or 0)
+            est_amount = order_qty * ref_price
+            est_sum += est_amount
 
             items.append(
                 {
                     "item_id": r["item_id"],
+                    "supplier_id": r["supplier_id"],
                     "name": r["name"],
                     "unit_base": r["unit_base"],
                     "qty": qty,
                     "reorder_point": reorder_point,
                     "order_qty": order_qty,
                     "ref_unit_price": ref_price,
+                    "est_amount": est_amount,
                     "cost_group": r["cost_group"],
                     "is_fixed": r["is_fixed"],
                 }
             )
-        grouped.append({"supplier_name": supplier_name, "items": items})
+        grouped.append({"supplier_name": supplier_name, "items": items, "est_sum": est_sum})
 
     return render_template(
         "shopping_list.html",
         grouped=grouped,
-        location=location,
-        include_food=include_food,
-        exclude_fixed=exclude_fixed,
     )
 
 

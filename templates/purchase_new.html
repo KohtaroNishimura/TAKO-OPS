@@ -8,7 +8,10 @@
       <select name="supplier_id">
         <option value="">未設定</option>
         {% for s in suppliers %}
-          <option value="{{ s['supplier_id'] }}">{{ s['name'] }}</option>
+          <option value="{{ s['supplier_id'] }}"
+            {{ "selected" if default_supplier_id is defined and default_supplier_id == s["supplier_id"] else "" }}>
+            {{ s['name'] }}
+          </option>
         {% endfor %}
       </select>
 
@@ -18,8 +21,14 @@
         <div class="muted">空なら「登録した時刻」を使います</div>
       </div>
 
+      <label>場所</label>
+      <select name="location">
+        <option value="STORE" {{ "selected" if default_location is defined and default_location=="STORE" else "" }}>STORE（店舗）</option>
+        <option value="WAREHOUSE" {{ "selected" if default_location is defined and default_location=="WAREHOUSE" else "" }}>WAREHOUSE（倉庫）</option>
+      </select>
+
       <label>メモ（任意）</label>
-      <input name="note" placeholder="例：Aプライスでまとめ買い">
+      <input name="note" value="{{ default_note if default_note is defined else '' }}" placeholder="例：Aプライスでまとめ買い">
 
       <hr style="margin: 16px 0;">
 
@@ -35,20 +44,31 @@
           </tr>
         </thead>
         <tbody>
-          {% for _ in range(10) %}
+          {% set prefill = prefill_lines if prefill_lines is defined else [] %}
+          {% for idx in range(10) %}
+            {% set pl = prefill[idx] if idx < (prefill|length) else None %}
             <tr>
               <td>
                 <select name="item_id">
                   <option value="">選択してください</option>
                   {% for i in items %}
-                    <option value="{{ i['item_id'] }}">
+                    <option value="{{ i['item_id'] }}"
+                      {{ "selected" if pl and pl["item_id"] == i["item_id"] else "" }}>
                       {{ i['name'] }}（{{ i['unit_base'] }}）
                     </option>
                   {% endfor %}
                 </select>
               </td>
-              <td><input name="qty" type="number" step="1" min="0" placeholder="例：450"></td>
-              <td><input name="unit_price" type="number" step="1" min="0" placeholder="例：258"></td>
+              <td>
+                <input name="qty" type="number" step="0.01" min="0"
+                       value="{{ '%.2f'|format(pl['qty']) if pl else '' }}"
+                       placeholder="例：450">
+              </td>
+              <td>
+                <input name="unit_price" type="number" step="0.01" min="0"
+                       value="{{ ('%.0f'|format(pl['unit_price'])) if (pl and pl['unit_price'] is not none) else '' }}"
+                       placeholder="例：258">
+              </td>
             </tr>
           {% endfor %}
         </tbody>
