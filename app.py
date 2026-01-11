@@ -184,9 +184,7 @@ def supplier_new_form():
 def supplier_create():
     name = (request.form.get("name") or "").strip()
     phone = (request.form.get("phone") or "").strip() or None
-    location = (request.form.get("location") or "WAREHOUSE").strip()
-    if location not in ("STORE", "WAREHOUSE"):
-        location = "WAREHOUSE"
+    location = "ALL"
 
     note = (request.form.get("note") or "").strip() or None
 
@@ -369,9 +367,7 @@ def purchase_create():
         # 空ならDB側のDEFAULTに任せる
         purchased_at = None
 
-    location = (request.form.get("location") or "WAREHOUSE").strip()
-    if location not in ("STORE", "WAREHOUSE"):
-        location = "WAREHOUSE"
+    location = "ALL"
 
     note = (request.form.get("note") or "").strip() or None
 
@@ -540,10 +536,6 @@ def purchase_new_from_list():
     supplier_id_raw = (request.form.get("supplier_id") or "").strip()
     supplier_id = int(supplier_id_raw) if supplier_id_raw else None
 
-    location = (request.form.get("location") or "WAREHOUSE").strip()
-    if location not in ("STORE", "WAREHOUSE"):
-        location = "WAREHOUSE"
-
     # チェックされた材料
     selected_item_ids_raw = request.form.getlist("selected_item_ids")
     selected_item_ids = []
@@ -555,8 +547,7 @@ def purchase_new_from_list():
 
     if not selected_item_ids:
         flash("チェックされた材料がありません。", "error")
-        # 買い物リストに戻す（locationは保持）
-        return redirect(url_for("shopping_list", location=location))
+        return redirect(url_for("shopping_list"))
 
     prefill_lines = []
     for item_id in selected_item_ids[:10]:  # purchase_new.html が10行固定なので最大10件
@@ -596,7 +587,6 @@ def purchase_new_from_list():
         items=items,
         prefill_lines=prefill_lines,
         default_supplier_id=supplier_id,
-        default_location=location,
         default_note=default_note,
     )
 
@@ -674,19 +664,6 @@ def purchase_edit_form(purchase_id: int):
         (purchase_id,),
     ).fetchall()
 
-    tx_loc = db.execute(
-        """
-        SELECT location
-        FROM inventory_tx
-        WHERE ref_type = 'PURCHASE' AND ref_id = ?
-        LIMIT 1
-        """,
-        (purchase_id,),
-    ).fetchone()
-    default_location = tx_loc["location"] if tx_loc else "STORE"
-    if default_location not in ("STORE", "WAREHOUSE"):
-        default_location = "STORE"
-
     line_rows: list[dict[str, object]] = []
     for l in lines:
         line_rows.append(
@@ -713,7 +690,6 @@ def purchase_edit_form(purchase_id: int):
         suppliers=suppliers,
         items=items,
         default_purchased_date=default_purchased_date,
-        default_location=default_location,
     )
 
 
@@ -737,9 +713,7 @@ def purchase_update(purchase_id: int):
     else:
         purchased_at_db = header["purchased_at"]
 
-    location = (request.form.get("location") or "STORE").strip()
-    if location not in ("STORE", "WAREHOUSE"):
-        location = "STORE"
+    location = "ALL"
 
     note = (request.form.get("note") or "").strip() or None
 
@@ -1068,7 +1042,7 @@ def regenerate_inventory_tx_for_daily_report(db, daily_report_id: int) -> int:
     waste_batches = (waste_pieces / pieces_per_batch) if pieces_per_batch > 0 else 0.0
 
     happened_at = f"{report_date} 09:00:00"
-    location = "STORE"
+    location = "ALL"
 
     # まず既存の自動生成分を削除（編集時に二重計上させない）
     db.execute(
@@ -1484,9 +1458,7 @@ def stocktakes_list():
 def stocktake_new_form():
     # デフォルトはFOODのみ
     only_food = request.args.get("only_food", "1") != "0"
-    location = request.args.get("location", "WAREHOUSE")
-    if location not in ("STORE", "WAREHOUSE"):
-        location = "WAREHOUSE"
+    location = "ALL"
 
     items = fetch_items_for_stocktake(only_food)
 
@@ -1509,7 +1481,6 @@ def stocktake_new_form():
         "stocktake_new.html",
         items=items,
         only_food=only_food,
-        location=location,
         current_map=current_map,
     )
 
@@ -1521,9 +1492,7 @@ def stocktake_create():
     taken_at_local = (request.form.get("taken_at") or "").strip()
     taken_at = _to_datetime_seconds(taken_at_local)  # 'YYYY-MM-DD HH:MM:00' or None
     scope = "MONTHLY"  # 今回は月次固定（必要ならフォーム化できます）
-    location = (request.form.get("location") or "WAREHOUSE").strip()
-    if location not in ("STORE", "WAREHOUSE"):
-        location = "WAREHOUSE"
+    location = "ALL"
     note = (request.form.get("note") or "").strip() or None
 
     only_food = (request.form.get("only_food") or "1") != "0"
@@ -1568,9 +1537,7 @@ def stocktake_create():
     if errors:
         for e in errors:
             flash(e, "error")
-        return redirect(
-            url_for("stocktake_new_form", only_food=("1" if only_food else "0"), location=location)
-        )
+        return redirect(url_for("stocktake_new_form", only_food=("1" if only_food else "0")))
 
     # ここ重要：棚卸時点の「理論在庫」を計算（taken_atがあればその時点まで）
     if taken_at:
@@ -1654,9 +1621,7 @@ def stocktake_create():
     except Exception as e:
         db.rollback()
         flash(f"月次棚卸の登録に失敗しました: {e}", "error")
-        return redirect(
-            url_for("stocktake_new_form", only_food=("1" if only_food else "0"), location=location)
-        )
+        return redirect(url_for("stocktake_new_form", only_food=("1" if only_food else "0")))
 
     flash("月次棚卸を登録し、差分を ADJUST で反映しました。", "success")
     return redirect(url_for("stocktake_detail", stocktake_id=stocktake_id))
@@ -1731,9 +1696,7 @@ def stocktake_monthly_new():
     if group not in ("FOOD", "ALL"):
         group = "FOOD"
 
-    location = (request.args.get("location") or "WAREHOUSE").upper()
-    if location not in ("STORE", "WAREHOUSE"):
-        location = "WAREHOUSE"
+    location = "ALL"
 
     # 入力は日付だけ（デフォルト今日）
     taken_date = (request.args.get("taken_date") or date.today().isoformat()).strip()
@@ -1790,7 +1753,6 @@ def stocktake_monthly_new():
         "stocktake_monthly_new.html",
         rows=rows,
         taken_date=taken_date,
-        location=location,
         group=group,
     )
 
@@ -1803,9 +1765,7 @@ def stocktake_monthly_create():
     if group not in ("FOOD", "ALL"):
         group = "FOOD"
 
-    location = (request.form.get("location") or "WAREHOUSE").upper()
-    if location not in ("STORE", "WAREHOUSE"):
-        location = "WAREHOUSE"
+    location = "ALL"
 
     taken_date = (request.form.get("taken_date") or "").strip()
     if not taken_date:
@@ -2496,14 +2456,12 @@ def monthly_food_cost():
 def inventory_list():
     db = get_db()
 
-    # 在庫残量 = inventory_tx の qty_delta を location 別に合計
+    # 在庫残量 = inventory_tx の qty_delta を全体合算
     rows = db.execute(
         """
         WITH inv AS (
           SELECT
             item_id,
-            SUM(CASE WHEN location = 'STORE' THEN qty_delta ELSE 0 END) AS qty_store,
-            SUM(CASE WHEN location = 'WAREHOUSE' THEN qty_delta ELSE 0 END) AS qty_warehouse,
             SUM(qty_delta) AS qty_total
           FROM inventory_tx
           GROUP BY item_id
@@ -2517,8 +2475,6 @@ def inventory_list():
           i.is_fixed,
           i.is_active,
           s.name AS supplier_name,
-          COALESCE(inv.qty_store, 0) AS qty_store,
-          COALESCE(inv.qty_warehouse, 0) AS qty_warehouse,
           COALESCE(inv.qty_total, 0) AS qty_total
         FROM items i
         LEFT JOIN inv ON inv.item_id = i.item_id

@@ -13,18 +13,11 @@
         <option value="0" {{ "selected" if not only_food else "" }}>全材料（FOOD + 消耗品）</option>
       </select>
 
-      <label>場所</label>
-      <select name="location">
-        <option value="WAREHOUSE" {{ "selected" if location=="WAREHOUSE" else "" }}>WAREHOUSE（倉庫）</option>
-        <option value="STORE" {{ "selected" if location=="STORE" else "" }}>STORE（店舗）</option>
-      </select>
-
       <button type="submit" class="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">表示を更新</button>
     </form>
 
     <form method="post" action="{{ url_for('stocktake_create') }}">
       <input type="hidden" name="only_food" value="{{ '1' if only_food else '0' }}">
-      <input type="hidden" name="location" value="{{ location }}">
 
       <div class="row grid gap-4 sm:grid-cols-2">
         <div>

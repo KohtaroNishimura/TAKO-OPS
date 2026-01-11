@@ -15,7 +15,6 @@
       <p class="muted">目安合計：{{ "%.0f"|format(g.est_sum) }}（参考価格ベース）</p>
 
       <form method="post" action="{{ url_for('purchase_new_from_list') }}">
-        <input type="hidden" name="location" value="WAREHOUSE">
 
         {% set sid = (g["items"][0]["supplier_id"] if g["items"]|length>0 else None) %}
         <input type="hidden" name="supplier_id" value="{{ sid if sid is not none else '' }}">

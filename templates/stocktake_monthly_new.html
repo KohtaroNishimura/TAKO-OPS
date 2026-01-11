@@ -7,12 +7,6 @@
     <label>棚卸日</label>
     <input type="date" name="taken_date" value="{{ taken_date }}">
 
-    <label>場所</label>
-    <select name="location">
-      <option value="WAREHOUSE" {{ "selected" if location=="WAREHOUSE" else "" }}>WAREHOUSE（倉庫/自宅）</option>
-      <option value="STORE" {{ "selected" if location=="STORE" else "" }}>STORE（店舗/トレーラー）</option>
-    </select>
-
     <label>表示</label>
     <select name="group">
       <option value="FOOD" {{ "selected" if group=="FOOD" else "" }}>食材（FOOD）</option>
@@ -24,7 +18,6 @@
 
   <form method="post" action="{{ url_for('stocktake_monthly_create') }}">
     <input type="hidden" name="taken_date" value="{{ taken_date }}">
-    <input type="hidden" name="location" value="{{ location }}">
     <input type="hidden" name="group" value="{{ group }}">
 
     <label>メモ（任意）</label>
