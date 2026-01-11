@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="card">
-    <h2>入庫編集（ID: {{ header["purchase_id"] }}）</h2>
+  <div class="card rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900">入庫編集（ID: {{ header["purchase_id"] }}）</h2>
 
     <form method="post" action="{{ url_for('purchase_update', purchase_id=header['purchase_id']) }}">
       <label>仕入れ先（任意）</label>
@@ -30,17 +30,19 @@
       <label>メモ（任意）</label>
       <input name="note" value="{{ header['note'] or '' }}">
 
-      <hr style="margin: 16px 0;">
+      <hr class="my-4 border-slate-200">
 
-      <h3>明細（最大10行）</h3>
+      <h3 class="text-base font-semibold text-slate-900">明細（最大10行）</h3>
       <p class="muted">数量(qty)の単位は材料の unit_base に合わせてください（g / ml / pcs など）</p>
 
-      <table>
+      <div class="overflow-x-auto -mx-4 sm:mx-0">
+
+        <table class="min-w-[640px] w-full text-sm">
         <thead>
           <tr>
-            <th style="width:45%;">材料</th>
-            <th style="width:20%;">数量(qty)</th>
-            <th style="width:20%;">単価(数量入力時は必須)</th>
+            <th class="w-[45%]">材料</th>
+            <th class="w-[20%]">数量(qty)</th>
+            <th class="w-[20%]">単価(数量入力時は必須)</th>
           </tr>
         </thead>
         <tbody>
@@ -63,10 +65,11 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
 
-      <div class="actions">
-        <button class="btn" type="submit">更新する</button>
-        <a class="btn secondary" href="{{ url_for('purchase_detail', purchase_id=header['purchase_id']) }}">戻る</a>
+      <div class="actions mt-4 flex flex-wrap items-center gap-2">
+        <button class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" type="submit">更新する</button>
+        <a class="btn secondary inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="{{ url_for('purchase_detail', purchase_id=header['purchase_id']) }}">戻る</a>
       </div>
     </form>
   </div>

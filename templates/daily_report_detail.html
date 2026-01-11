@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-  <h2>日報（{{ rep["report_date"] }}）</h2>
+<div class="card rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+  <h2 class="text-lg font-semibold text-slate-900">日報（{{ rep["report_date"] }}）</h2>
 
-  <div style="margin: 12px 0;">
-    <a class="btn" href="{{ url_for('daily_reports_list') }}">日報一覧へ</a>
-    <a class="btn" href="{{ url_for('daily_report_edit', daily_report_id=rep['daily_report_id']) }}">編集</a>
+  <div class="my-3 flex flex-wrap gap-2">
+    <a class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" href="{{ url_for('daily_reports_list') }}">日報一覧へ</a>
+    <a class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" href="{{ url_for('daily_report_edit', daily_report_id=rep['daily_report_id']) }}">編集</a>
   </div>
 
-  <h3>LINE送信用（コピペ用）</h3>
+  <h3 class="mt-4 text-base font-semibold text-slate-900">LINE送信用（コピペ用）</h3>
 
-  <textarea id="lineText" rows="14" style="width:100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;" readonly>{{ line_text }}</textarea>
+  <textarea id="lineText" rows="14" class="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs" readonly>{{ line_text }}</textarea>
 
-  <div style="margin-top: 10px;">
-    <button class="btn" type="button" onclick="copyLineText()">コピー</button>
-    <span id="copyStatus" class="muted" style="margin-left:10px;"></span>
+  <div class="mt-3 flex flex-wrap items-center gap-2">
+    <button class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" type="button" onclick="copyLineText()">コピー</button>
+    <span id="copyStatus" class="muted ml-2 text-sm text-slate-500"></span>
   </div>
 </div>
 

@@ -1,14 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="card">
-    <h2>材料一覧</h2>
+  <div class="card rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900">材料一覧</h2>
     <p class="muted">今は「材料の登録・編集」まで。のちほど仕入れ・棚卸・在庫計算に繋げます。</p>
 
-    <div class="actions">
-      <a class="btn" href="{{ url_for('item_new_form') }}">＋ 新規登録</a>
+    <div class="actions mt-4 flex flex-wrap items-center gap-2">
+      <a class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" href="{{ url_for('item_new_form') }}">＋ 新規登録</a>
     </div>
 
-    <table>
+    <div class="overflow-x-auto -mx-4 sm:mx-0">
+
+      <table class="min-w-[640px] w-full text-sm">
       <thead>
         <tr>
           <th>ID</th>
@@ -35,14 +37,14 @@
             <td>{{ "✓" if i["is_fixed"] else "" }}</td>
             <td>{{ i["supplier_name"] or "" }}</td>
             <td>{{ "◯" if i["is_active"] else "" }}</td>
-            <td style="white-space: nowrap;">
-              <a class="button-link" href="{{ url_for('item_edit_form', item_id=i['item_id']) }}">編集</a>
+            <td class="whitespace-nowrap">
+              <a class="button-link inline-flex items-center rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50" href="{{ url_for('item_edit_form', item_id=i['item_id']) }}">編集</a>
 
               <form method="post"
                     action="{{ url_for('item_delete', item_id=i['item_id']) }}"
-                    style="display:inline;"
+                    class="inline"
                     onsubmit="return confirm('この材料を削除しますか？（関連データがある場合は無効化になります）');">
-                <button type="submit">削除</button>
+                <button type="submit" class="inline-flex items-center rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">削除</button>
               </form>
             </td>
           </tr>
@@ -51,5 +53,6 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </div>
 {% endblock %}

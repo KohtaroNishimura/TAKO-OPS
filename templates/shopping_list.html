@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="card">
-    <h2>買い物リスト（発注目安以下）</h2>
+  <div class="card rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900">買い物リスト（発注目安以下）</h2>
 
     <p class="muted">基準：TOTAL（倉庫+店舗 合算）</p>
 
@@ -10,8 +10,8 @@
     {% endif %}
 
     {% for g in grouped %}
-      <hr style="margin: 16px 0;">
-      <h3>{{ g.supplier_name }}</h3>
+      <hr class="my-4 border-slate-200">
+      <h3 class="text-base font-semibold text-slate-900">{{ g.supplier_name }}</h3>
       <p class="muted">目安合計：{{ "%.0f"|format(g.est_sum) }}（参考価格ベース）</p>
 
       <form method="post" action="{{ url_for('purchase_new_from_list') }}">
@@ -20,7 +20,9 @@
         {% set sid = (g["items"][0]["supplier_id"] if g["items"]|length>0 else None) %}
         <input type="hidden" name="supplier_id" value="{{ sid if sid is not none else '' }}">
 
-        <table>
+        <div class="overflow-x-auto -mx-4 sm:mx-0">
+
+          <table class="min-w-[640px] w-full text-sm">
           <thead>
             <tr>
               <th>✓</th>
@@ -53,7 +55,7 @@
                     min="0"
                     name="qty_{{ i.item_id }}"
                     value="{{ ('%.0f'|format(i.order_qty)) if i.unit_base=='pcs' else ('%.2f'|format(i.order_qty)) }}"
-                    style="width: 120px;"
+                    class="w-[120px]"
                   >
                 </td>
 
@@ -66,7 +68,7 @@
                     min="0"
                     name="unit_price_{{ i.item_id }}"
                     value="{{ '%.0f'|format(i.ref_unit_price or 0) }}"
-                    style="width: 100px;"
+                    class="w-[100px]"
                   >
                 </td>
 
@@ -76,9 +78,10 @@
             {% endfor %}
           </tbody>
         </table>
+        </div>
 
-        <div class="actions" style="margin-top: 10px;">
-          <button class="btn" type="submit">
+        <div class="actions mt-4 flex flex-wrap items-center gap-2">
+          <button class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" type="submit">
             チェックした材料で入庫登録へ
           </button>
           <span class="muted">※最大10件までフォームに反映</span>

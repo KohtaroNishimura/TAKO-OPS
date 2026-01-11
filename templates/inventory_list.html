@@ -1,12 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="card">
-    <h2>在庫一覧（残量）</h2>
+  <div class="card rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900">在庫一覧（残量）</h2>
     <p class="muted">
       残量は inventory_tx の合計（+入庫 / -出庫）です。<br>
     </p>
 
-    <table>
+    <div class="overflow-x-auto -mx-4 sm:mx-0">
+
+      <table class="min-w-[640px] w-full text-sm">
       <thead>
         <tr>
           <th>材料</th>
@@ -21,7 +23,7 @@
       <tbody>
         {% for r in rows %}
           {% set low = (r["qty_total"] <= r["reorder_point"]) %}
-          <tr style="{{ 'background:#fff7f7;' if low else '' }}">
+          <tr class="{{ 'bg-rose-50' if low else '' }}">
             <td>
               {{ r["name"] }}
               {% if low %}
@@ -40,9 +42,10 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
 
-    <div class="actions">
-      <a class="btn" href="{{ url_for('purchase_new_form') }}">＋ 入庫登録</a>
+    <div class="actions mt-4 flex flex-wrap items-center gap-2">
+      <a class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" href="{{ url_for('purchase_new_form') }}">＋ 入庫登録</a>
     </div>
   </div>
 {% endblock %}

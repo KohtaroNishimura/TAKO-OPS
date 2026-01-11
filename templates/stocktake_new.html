@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="card">
-    <h2>月次棚卸（入力）</h2>
+  <div class="card rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900">月次棚卸（入力）</h2>
     <p class="muted">
       入力した「実測値」と、在庫履歴（inventory_tx）の理論在庫を比べて差分を自動計算し、ADJUSTで反映します。
     </p>
 
-    <form method="get" action="{{ url_for('stocktake_new_form') }}" style="margin-bottom:12px;">
+    <form method="get" action="{{ url_for('stocktake_new_form') }}" class="mb-3">
       <label>表示対象</label>
       <select name="only_food">
         <option value="1" {{ "selected" if only_food else "" }}>食材原価（FOOD）のみ（38項目）</option>
@@ -19,14 +19,14 @@
         <option value="STORE" {{ "selected" if location=="STORE" else "" }}>STORE（店舗）</option>
       </select>
 
-      <button type="submit">表示を更新</button>
+      <button type="submit" class="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">表示を更新</button>
     </form>
 
     <form method="post" action="{{ url_for('stocktake_create') }}">
       <input type="hidden" name="only_food" value="{{ '1' if only_food else '0' }}">
       <input type="hidden" name="location" value="{{ location }}">
 
-      <div class="row">
+      <div class="row grid gap-4 sm:grid-cols-2">
         <div>
           <label>棚卸日時（任意）</label>
           <input type="datetime-local" name="taken_at">
@@ -38,15 +38,17 @@
         </div>
       </div>
 
-      <hr style="margin: 16px 0;">
+      <hr class="my-4 border-slate-200">
 
-      <h3>棚卸数量（実測）</h3>
+      <h3 class="text-base font-semibold text-slate-900">棚卸数量（実測）</h3>
       <p class="muted">
         表示している「理論在庫」は現時点の合計です（入力後、差分をADJUSTします）。
         未入力の行はスキップされます（今回は数えない扱い）。
       </p>
 
-      <table>
+      <div class="overflow-x-auto -mx-4 sm:mx-0">
+
+        <table class="min-w-[640px] w-full text-sm">
         <thead>
           <tr>
             <th>材料</th>
@@ -73,13 +75,14 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
 
-      <div class="actions">
-        <button class="btn" type="submit"
+      <div class="actions mt-4 flex flex-wrap items-center gap-2">
+        <button class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" type="submit"
           onclick="return confirm('棚卸を登録し、差分をADJUSTで反映します。よろしいですか？');">
           棚卸を登録して反映
         </button>
-        <a class="btn secondary" href="{{ url_for('stocktakes_list') }}">戻る</a>
+        <a class="btn secondary inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="{{ url_for('stocktakes_list') }}">戻る</a>
       </div>
     </form>
   </div>

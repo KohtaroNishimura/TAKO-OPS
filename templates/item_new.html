@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="card">
-    <h2>材料登録</h2>
+  <div class="card rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900">材料登録</h2>
 
     <form method="post" action="{{ url_for('item_create') }}">
       <label>材料名（必須）</label>
@@ -23,7 +23,7 @@
         <option value="SUPPLIES" selected>消耗品</option>
       </select>
 
-      <div class="row">
+      <div class="row grid gap-4 sm:grid-cols-2">
         <div>
           <label>発注目安（reorder_point）</label>
           <input name="reorder_point" type="number" step="0.01" min="0" placeholder="例：1000（g）">
@@ -54,9 +54,9 @@
       </label>
       <div class="muted">別商品にすると「品質」が変わる可能性があるので、本部の使用材料で統一して下さい。</div>
 
-      <div class="actions">
-        <button class="btn" type="submit">登録する</button>
-        <a class="btn secondary" href="{{ url_for('items_list') }}">戻る</a>
+      <div class="actions mt-4 flex flex-wrap items-center gap-2">
+        <button class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" type="submit">登録する</button>
+        <a class="btn secondary inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="{{ url_for('items_list') }}">戻る</a>
       </div>
     </form>
   </div>

@@ -1,13 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="card">
-    <h2>棚卸一覧</h2>
+  <div class="card rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900">棚卸一覧</h2>
 
-    <div class="actions">
-      <a class="btn" href="{{ url_for('stocktake_new_form') }}">＋ 月次棚卸</a>
+    <div class="actions mt-4 flex flex-wrap items-center gap-2">
+      <a class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" href="{{ url_for('stocktake_new_form') }}">＋ 月次棚卸</a>
     </div>
 
-    <table>
+    <div class="overflow-x-auto -mx-4 sm:mx-0">
+
+      <table class="min-w-[640px] w-full text-sm">
       <thead>
         <tr>
           <th>ID</th>
@@ -33,5 +35,6 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </div>
 {% endblock %}

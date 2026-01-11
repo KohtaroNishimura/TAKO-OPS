@@ -1,13 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="card">
-    <h2>仕入れ先一覧</h2>
+  <div class="card rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900">仕入れ先一覧</h2>
 
-    <div class="actions">
-      <a class="btn" href="{{ url_for('supplier_new_form') }}">＋ 新規登録</a>
+    <div class="actions mt-4 flex flex-wrap items-center gap-2">
+      <a class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" href="{{ url_for('supplier_new_form') }}">＋ 新規登録</a>
     </div>
 
-    <table>
+    <div class="overflow-x-auto -mx-4 sm:mx-0">
+
+      <table class="min-w-[640px] w-full text-sm">
       <thead>
         <tr>
           <th>ID</th>
@@ -24,14 +26,14 @@
             <td>{{ s["name"] }}</td>
             <td>{{ s["phone"] or "" }}</td>
             <td>{{ s["note"] or "" }}</td>
-            <td style="white-space: nowrap;">
-              <a class="button-link" href="{{ url_for('supplier_edit_form', supplier_id=s['supplier_id']) }}">編集</a>
+            <td class="whitespace-nowrap">
+              <a class="button-link inline-flex items-center rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50" href="{{ url_for('supplier_edit_form', supplier_id=s['supplier_id']) }}">編集</a>
 
               <form method="post"
                     action="{{ url_for('supplier_delete', supplier_id=s['supplier_id']) }}"
-                    style="display:inline;"
+                    class="inline"
                     onsubmit="return confirm('この仕入れ先を削除しますか？');">
-                <button type="submit">削除</button>
+                <button type="submit" class="inline-flex items-center rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">削除</button>
               </form>
             </td>
           </tr>
@@ -40,5 +42,6 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </div>
 {% endblock %}

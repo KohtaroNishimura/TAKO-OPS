@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-  <h2>棚卸結果</h2>
+<div class="card rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+  <h2 class="text-lg font-semibold text-slate-900">棚卸結果</h2>
 
   <p>
     <b>{{ st.scope }}</b> / <b>{{ st.location }}</b><br>
@@ -9,10 +9,11 @@
     メモ：{{ st.note or "-" }}
   </p>
 
-  <hr style="margin:16px 0;">
+  <hr class="my-4 border-slate-200">
 
-  <h3>ADJUST反映（差分だけ）</h3>
-  <table>
+  <h3 class="text-base font-semibold text-slate-900">ADJUST反映（差分だけ）</h3>
+  <div class="overflow-x-auto -mx-4 sm:mx-0">
+    <table class="min-w-[640px] w-full text-sm">
     <thead>
       <tr>
         <th>材料</th>
@@ -32,11 +33,13 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 
-  <hr style="margin:16px 0;">
+  <hr class="my-4 border-slate-200">
 
-  <h3>棚卸入力（counted）</h3>
-  <table>
+  <h3 class="text-base font-semibold text-slate-900">棚卸入力（counted）</h3>
+  <div class="overflow-x-auto -mx-4 sm:mx-0">
+    <table class="min-w-[640px] w-full text-sm">
     <thead>
       <tr>
         <th>材料</th>
@@ -54,9 +57,10 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 
-  <div class="actions" style="margin-top:12px;">
-    <a class="btn" href="{{ url_for('stocktake_monthly_new') }}">次の棚卸を入力</a>
+  <div class="actions mt-4 flex flex-wrap items-center gap-2">
+    <a class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" href="{{ url_for('stocktake_monthly_new') }}">次の棚卸を入力</a>
   </div>
 </div>
 {% endblock %}

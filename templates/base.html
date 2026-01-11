@@ -4,54 +4,34 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>たこ焼き 在庫管理</title>
-  <style>
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; margin: 24px; }
-    a { text-decoration: none; }
-    .nav a { margin-right: 12px; }
-    .container { max-width: 980px; margin: 0 auto; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin-top: 16px; }
-    .flash { padding: 10px 12px; border-radius: 10px; margin: 10px 0; }
-    .flash.success { background: #e8fff0; border: 1px solid #bde5c9; }
-    .flash.error { background: #ffecec; border: 1px solid #f3b3b3; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid #eee; padding: 10px 8px; text-align: left; }
-    th { background: #fafafa; }
-    .muted { color: #666; font-size: 12px; }
-    label { display:block; margin-top: 10px; font-weight: 600; }
-    input, select, textarea { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ddd; }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .btn { display:inline-block; padding: 10px 14px; border-radius: 10px; border: 1px solid #333; background:#333; color:#fff; }
-    .btn.secondary { background:#fff; color:#333; }
-    .actions { margin-top: 14px; display:flex; gap: 10px; align-items:center; }
-    button, .button-link { padding: 8px 10px; border-radius: 10px; border: 1px solid #ddd; background: #fff; cursor: pointer; display: inline-flex; align-items: center; font: inherit; }
-    button:hover, .button-link:hover { background: #f6f6f6; }
-    .button-link { color: #333; text-decoration: none; }
-  </style>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
-  <div class="container">
-    <div class="nav">
-      <a href="{{ url_for('items_list') }}">材料一覧</a>
-      <a href="{{ url_for('item_new_form') }}">材料登録</a>
-      <a href="{{ url_for('suppliers_list') }}">仕入れ先一覧</a>
-      <a href="{{ url_for('supplier_new_form') }}">仕入れ先登録</a>
-      <a href="{{ url_for('purchases_list') }}">入庫一覧</a>
-      <a href="{{ url_for('purchase_new_form') }}">入庫登録</a>
-      <a href="{{ url_for('inventory_list') }}">在庫一覧</a>
-      <a href="{{ url_for('stocktakes_list') }}">棚卸一覧</a>
-      <a href="{{ url_for('stocktake_monthly_new') }}">月次棚卸</a>
-      <a href="{{ url_for('transfers_list') }}">移動一覧</a>
-      <a href="{{ url_for('transfer_new_form') }}">移動登録</a>
-      <a href="{{ url_for('shopping_list') }}">買い物リスト</a>
-      <a href="{{ url_for('monthly_food_cost') }}">月次原価率</a>
-      <a href="{{ url_for('recipe_batch_edit') }}">レシピ設定</a>
-      <a href="{{ url_for('daily_reports_list') }}">日報</a>
+<body class="bg-slate-50 text-slate-900 antialiased">
+  <div class="container mx-auto max-w-5xl px-4 pb-10 pt-6 sm:px-6 lg:px-8">
+    <div class="nav flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white/90 p-3 text-xs font-semibold text-slate-700 shadow-sm backdrop-blur sm:text-sm">
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('home') }}">TOP</a>
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('items_list') }}">材料一覧</a>
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('item_new_form') }}">材料登録</a>
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('suppliers_list') }}">仕入れ先一覧</a>
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('supplier_new_form') }}">仕入れ先登録</a>
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('purchases_list') }}">入庫一覧</a>
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('purchase_new_form') }}">入庫登録</a>
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('inventory_list') }}">在庫一覧</a>
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('stocktakes_list') }}">棚卸一覧</a>
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('stocktake_monthly_new') }}">月次棚卸</a>
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('transfers_list') }}">移動一覧</a>
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('transfer_new_form') }}">移動登録</a>
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('shopping_list') }}">買い物リスト</a>
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('monthly_food_cost') }}">月次原価率</a>
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('recipe_batch_edit') }}">レシピ設定</a>
+      <a class="rounded-full px-3 py-1.5 hover:bg-orange-50 hover:text-orange-700" href="{{ url_for('daily_reports_list') }}">日報</a>
     </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
-          <div class="flash {{ category }}">{{ message }}</div>
+          <div class="flash {{ category }} mb-4 rounded-xl border px-3 py-2 text-sm">{{ message }}</div>
         {% endfor %}
       {% endif %}
     {% endwith %}

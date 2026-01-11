@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="card">
-    <h2>移動登録（倉庫⇄店舗）</h2>
+  <div class="card rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900">移動登録（倉庫⇄店舗）</h2>
 
     <form method="post" action="{{ url_for('transfer_create') }}">
-      <div class="row">
+      <div class="row grid gap-4 sm:grid-cols-2">
         <div>
           <label>移動日（任意）</label>
           <input type="date" name="moved_date"
@@ -30,14 +30,15 @@
       <label>メモ（任意）</label>
       <input name="note" value="{{ default_note if default_note is defined else '' }}" placeholder="例：営業前にトレーラーへ補充">
 
-      <hr style="margin: 16px 0;">
+      <hr class="my-4 border-slate-200">
 
-      <h3>明細（最大10行）</h3>
-      <table>
+      <h3 class="text-base font-semibold text-slate-900">明細（最大10行）</h3>
+      <div class="overflow-x-auto -mx-4 sm:mx-0">
+        <table class="min-w-[640px] w-full text-sm">
         <thead>
           <tr>
-            <th style="width:60%;">材料</th>
-            <th style="width:40%;">数量</th>
+            <th class="w-[60%]">材料</th>
+            <th class="w-[40%]">数量</th>
           </tr>
         </thead>
         {% set prefill = prefill_lines if prefill_lines is defined else [] %}
@@ -65,13 +66,14 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
 
-      <div class="actions">
-        <button class="btn" type="submit"
+      <div class="actions mt-4 flex flex-wrap items-center gap-2">
+        <button class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" type="submit"
           onclick="return confirm('移動を登録し、在庫履歴（TRANSFER）を2地点に反映します。よろしいですか？');">
           登録する
         </button>
-        <a class="btn secondary" href="{{ url_for('transfers_list') }}">戻る</a>
+        <a class="btn secondary inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="{{ url_for('transfers_list') }}">戻る</a>
       </div>
     </form>
   </div>

@@ -1,25 +1,25 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-  <h2>月次棚卸（{{ "食材のみ" if group=="FOOD" else "全て" }}）</h2>
+<div class="card rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+  <h2 class="text-lg font-semibold text-slate-900">月次棚卸（{{ "食材のみ" if group=="FOOD" else "全て" }}）</h2>
 
-  <form method="get" action="{{ url_for('stocktake_monthly_new') }}" style="margin-bottom:12px;">
+  <form method="get" action="{{ url_for('stocktake_monthly_new') }}" class="mb-3">
     <label>棚卸日</label>
     <input type="date" name="taken_date" value="{{ taken_date }}">
 
-    <label style="margin-left:12px;">場所</label>
+    <label>場所</label>
     <select name="location">
       <option value="WAREHOUSE" {{ "selected" if location=="WAREHOUSE" else "" }}>WAREHOUSE（倉庫/自宅）</option>
       <option value="STORE" {{ "selected" if location=="STORE" else "" }}>STORE（店舗/トレーラー）</option>
     </select>
 
-    <label style="margin-left:12px;">表示</label>
+    <label>表示</label>
     <select name="group">
       <option value="FOOD" {{ "selected" if group=="FOOD" else "" }}>食材（FOOD）</option>
       <option value="ALL" {{ "selected" if group=="ALL" else "" }}>全て</option>
     </select>
 
-    <button type="submit" style="margin-left:12px;">表示</button>
+    <button type="submit" class="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">表示</button>
   </form>
 
   <form method="post" action="{{ url_for('stocktake_monthly_create') }}">
@@ -35,7 +35,9 @@
       空欄にすると「現在庫のまま」として扱います。
     </p>
 
-    <table>
+    <div class="overflow-x-auto -mx-4 sm:mx-0">
+
+      <table class="min-w-[640px] w-full text-sm">
       <thead>
         <tr>
           <th>材料</th>
@@ -57,16 +59,17 @@
                 min="0"
                 step="{{ '1' if r.unit_base=='pcs' else '0.01' }}"
                 value="{{ ('%.0f'|format(r.counted_default)) if r.unit_base=='pcs' else ('%.2f'|format(r.counted_default)) }}"
-                style="width:140px;"
+                class="w-[140px]"
               >
             </td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
+    </div>
 
-    <div class="actions" style="margin-top:12px;">
-      <button type="submit" class="btn">棚卸を登録して差分を反映（ADJUST）</button>
+    <div class="actions mt-4 flex flex-wrap items-center gap-2">
+      <button type="submit" class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400">棚卸を登録して差分を反映（ADJUST）</button>
     </div>
   </form>
 </div>

@@ -1,38 +1,40 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="card">
-    <h2>月次 食材原価率（理想{{ (ideal_ratio*100)|round(0) }}%との差）</h2>
+  <div class="card rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900">月次 食材原価率（理想{{ (ideal_ratio*100)|round(0) }}%との差）</h2>
 
-    <form method="get" action="{{ url_for('monthly_food_cost') }}" style="margin-bottom:12px;">
+    <form method="get" action="{{ url_for('monthly_food_cost') }}" class="mb-3">
       <label>対象月</label>
       <input type="month" name="ym" value="{{ ym }}">
 
-      <label style="margin-left:12px;">棚卸場所</label>
+      <label>棚卸場所</label>
       <select name="location">
         <option value="WAREHOUSE" {{ "selected" if location=="WAREHOUSE" else "" }}>WAREHOUSE（倉庫/自宅）</option>
         <option value="STORE" {{ "selected" if location=="STORE" else "" }}>STORE（店舗/トレーラー）</option>
       </select>
 
-      <button type="submit" style="margin-left:12px;">表示</button>
+      <button type="submit" class="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">表示</button>
     </form>
 
     <p class="muted">期間：{{ start_date }} 〜 {{ next_date }}（{{ next_date }}は含まない）</p>
 
     {% if begin_missing %}
-      <p style="color:#b00;"><b>注意：</b>期首棚卸（前月末の月次棚卸）が見つかりません。期首在庫は0として計算しています。</p>
+      <p class="text-sm text-red-700"><span class="font-semibold">注意：</span>期首棚卸（前月末の月次棚卸）が見つかりません。期首在庫は0として計算しています。</p>
     {% else %}
       <p class="muted">期首棚卸：{{ begin_taken_at }}</p>
     {% endif %}
 
     {% if end_missing %}
-      <p style="color:#b00;"><b>注意：</b>当月の期末棚卸（月次棚卸）が見つかりません。期末在庫は0として計算しています。</p>
+      <p class="text-sm text-red-700"><span class="font-semibold">注意：</span>当月の期末棚卸（月次棚卸）が見つかりません。期末在庫は0として計算しています。</p>
     {% else %}
       <p class="muted">期末棚卸：{{ end_taken_at }}</p>
     {% endif %}
 
-    <hr style="margin:16px 0;">
+    <hr class="my-4 border-slate-200">
 
-    <table>
+    <div class="overflow-x-auto -mx-4 sm:mx-0">
+
+      <table class="min-w-[640px] w-full text-sm">
       <tbody>
         <tr><th>売上（円）</th><td>{{ "%.0f"|format(sales) }}</td></tr>
         <tr><th>期首在庫金額（円）</th><td>{{ "%.0f"|format(begin_value) }}</td></tr>
@@ -62,11 +64,13 @@
         </tr>
       </tbody>
     </table>
+    </div>
 
-    <hr style="margin:16px 0;">
+    <hr class="my-4 border-slate-200">
 
-    <h3>当月仕入内訳（FOOD）</h3>
-    <table>
+    <h3 class="text-base font-semibold text-slate-900">当月仕入内訳（FOOD）</h3>
+    <div class="overflow-x-auto -mx-4 sm:mx-0">
+      <table class="min-w-[640px] w-full text-sm">
       <thead>
         <tr>
           <th>材料</th>
@@ -88,14 +92,16 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
 
-    <hr style="margin:16px 0;">
+    <hr class="my-4 border-slate-200">
 
-    <h3>期末棚卸内訳（FOOD）</h3>
+    <h3 class="text-base font-semibold text-slate-900">期末棚卸内訳（FOOD）</h3>
     {% if end_missing %}
       <p>期末棚卸がないため表示できません。</p>
     {% else %}
-      <table>
+      <div class="overflow-x-auto -mx-4 sm:mx-0">
+        <table class="min-w-[640px] w-full text-sm">
         <thead>
           <tr>
             <th>材料</th>
@@ -119,6 +125,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% endif %}
   </div>
 {% endblock %}

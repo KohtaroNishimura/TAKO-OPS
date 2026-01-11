@@ -1,139 +1,72 @@
 {% extends "base.html" %}
 {% block content %}
 
-<style>
-  .dash {
-    display: grid;
-    gap: 14px;
-  }
-  .dash-hero {
-    padding: 18px;
-    border: 1px solid #e7e7e7;
-    border-radius: 14px;
-    background: #fff;
-  }
-  .dash-hero h1 {
-    margin: 0 0 6px 0;
-    font-size: 20px;
-  }
-  .muted { color: #666; }
-  .grid {
-    display: grid;
-    gap: 12px;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  }
-  .cardlink {
-    display: block;
-    text-decoration: none;
-    color: inherit;
-    border: 1px solid #e7e7e7;
-    border-radius: 14px;
-    background: #fff;
-    padding: 14px;
-    transition: transform .05s ease;
-  }
-  .cardlink:hover { transform: translateY(-1px); }
-  .cardlink .title {
-    font-weight: 700;
-    margin-bottom: 6px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .cardlink .desc { font-size: 13px; color:#666; line-height:1.4; }
-  .pill {
-    display: inline-block;
-    font-size: 12px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: #f3f3f3;
-    color: #444;
-    margin-left: auto;
-  }
-  .quick {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 10px;
-  }
-  .quick a {
-    border: 1px solid #e7e7e7;
-    background: #fff;
-    border-radius: 10px;
-    padding: 8px 10px;
-    text-decoration: none;
-    color: inherit;
-    font-weight: 600;
-    font-size: 13px;
-  }
-</style>
-
-<div class="dash">
-  <div class="dash-hero">
-    <h1>たこ焼き屋 在庫管理</h1>
-    <div class="muted">
+<div class="dash flex flex-col gap-4">
+  <div class="dash-hero rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+    <h1 class="text-xl font-semibold text-slate-900">たこ焼き屋 在庫管理</h1>
+    <div class="muted text-sm text-slate-600">
       迷ったらここから。日報・入庫・棚卸・買い物リストへ最短で移動できます。
-      <span id="today" class="pill" style="margin-left:8px;"></span>
+      <span id="today" class="pill ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600"></span>
     </div>
 
-    <div class="quick">
-      <a href="/daily-reports/new">📝 日報を入力</a>
-      <a href="/purchases/new">🧾 入庫を登録</a>
-      <a href="/stocktakes/monthly/new">📦 月次棚卸</a>
-      <a href="/shopping-list">🛒 買い物リスト</a>
+    <div class="quick mt-3 flex flex-wrap gap-2">
+      <a class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="/daily-reports/new">📝 日報を入力</a>
+      <a class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="/purchases/new">🧾 入庫を登録</a>
+      <a class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="/stocktakes/monthly/new">📦 月次棚卸</a>
+      <a class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="/shopping-list">🛒 買い物リスト</a>
     </div>
   </div>
 
-  <div class="grid">
-    <a class="cardlink" href="/daily-reports">
-      <div class="title">📝 日報 <span class="pill">Daily</span></div>
-      <div class="desc">売れたバッチ数／ロス個数／生産時間／売上／所感。登録後にLINE用コピペも。</div>
+  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <a class="cardlink rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" href="/daily-reports">
+      <div class="title flex items-center gap-2 text-base font-semibold text-slate-900">📝 日報 <span class="pill ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Daily</span></div>
+      <div class="desc mt-1 text-sm text-slate-600">売れたバッチ数／ロス個数／生産時間／売上／所感。登録後にLINE用コピペも。</div>
     </a>
 
-    <a class="cardlink" href="/purchases">
-      <div class="title">🧾 入庫一覧 <span class="pill">Purchases</span></div>
-      <div class="desc">仕入れ先で絞り込み→材料を選んで入庫。単価は任意。</div>
+    <a class="cardlink rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" href="/purchases">
+      <div class="title flex items-center gap-2 text-base font-semibold text-slate-900">🧾 入庫一覧 <span class="pill ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Purchases</span></div>
+      <div class="desc mt-1 text-sm text-slate-600">仕入れ先で絞り込み→材料を選んで入庫。単価は任意。</div>
     </a>
 
-    <a class="cardlink" href="/inventory">
-      <div class="title">📊 在庫一覧（残量） <span class="pill">Stock</span></div>
-      <div class="desc">場所（倉庫/店舗）ごとの残量確認。発注判断の起点。</div>
+    <a class="cardlink rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" href="/inventory">
+      <div class="title flex items-center gap-2 text-base font-semibold text-slate-900">📊 在庫一覧（残量） <span class="pill ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Stock</span></div>
+      <div class="desc mt-1 text-sm text-slate-600">場所（倉庫/店舗）ごとの残量確認。発注判断の起点。</div>
     </a>
 
-    <a class="cardlink" href="/shopping-list">
-      <div class="title">🛒 買い物リスト <span class="pill">Reorder</span></div>
-      <div class="desc">発注目安以下の材料を仕入れ先ごとにまとめて確認。</div>
+    <a class="cardlink rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" href="/shopping-list">
+      <div class="title flex items-center gap-2 text-base font-semibold text-slate-900">🛒 買い物リスト <span class="pill ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Reorder</span></div>
+      <div class="desc mt-1 text-sm text-slate-600">発注目安以下の材料を仕入れ先ごとにまとめて確認。</div>
     </a>
 
-    <a class="cardlink" href="/stocktakes/monthly/new">
-      <div class="title">📦 月次棚卸入力 <span class="pill">Monthly</span></div>
-      <div class="desc">倉庫に寄せて棚卸→差分をADJUSTでinventory_txへ反映。</div>
+    <a class="cardlink rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" href="/stocktakes/monthly/new">
+      <div class="title flex items-center gap-2 text-base font-semibold text-slate-900">📦 月次棚卸入力 <span class="pill ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Monthly</span></div>
+      <div class="desc mt-1 text-sm text-slate-600">倉庫に寄せて棚卸→差分をADJUSTでinventory_txへ反映。</div>
     </a>
 
-    <a class="cardlink" href="/reports/monthly-food-cost">
-      <div class="title">📈 月次 食材原価率 <span class="pill">COGS</span></div>
-      <div class="desc">食材（FOOD）原価率と理想38%との差を確認。</div>
+    <a class="cardlink rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" href="/reports/monthly-food-cost">
+      <div class="title flex items-center gap-2 text-base font-semibold text-slate-900">📈 月次 食材原価率 <span class="pill ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">COGS</span></div>
+      <div class="desc mt-1 text-sm text-slate-600">食材（FOOD）原価率と理想38%との差を確認。</div>
     </a>
 
-    <a class="cardlink" href="/recipe-batch">
-      <div class="title">🍳 レシピ設定（1バッチ消費） <span class="pill">Recipe</span></div>
-      <div class="desc">材料ごとに「1バッチあたり消費量」と自動減算ON/OFFを設定。</div>
+    <a class="cardlink rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" href="/recipe-batch">
+      <div class="title flex items-center gap-2 text-base font-semibold text-slate-900">🍳 レシピ設定（1バッチ消費） <span class="pill ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Recipe</span></div>
+      <div class="desc mt-1 text-sm text-slate-600">材料ごとに「1バッチあたり消費量」と自動減算ON/OFFを設定。</div>
     </a>
 
-    <a class="cardlink" href="/items">
-      <div class="title">🧂 材料マスター <span class="pill">Items</span></div>
-      <div class="desc">材料の追加・編集・削除／固定フラグ／発注目安／参考価格。</div>
+    <a class="cardlink rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" href="/items">
+      <div class="title flex items-center gap-2 text-base font-semibold text-slate-900">🧂 材料マスター <span class="pill ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Items</span></div>
+      <div class="desc mt-1 text-sm text-slate-600">材料の追加・編集・削除／固定フラグ／発注目安／参考価格。</div>
     </a>
 
-    <a class="cardlink" href="/suppliers">
-      <div class="title">🏷️ 仕入れ先マスター <span class="pill">Suppliers</span></div>
-      <div class="desc">仕入れ先の登録・編集・削除。材料の紐付け先。</div>
+    <a class="cardlink rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" href="/suppliers">
+      <div class="title flex items-center gap-2 text-base font-semibold text-slate-900">🏷️ 仕入れ先マスター <span class="pill ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Suppliers</span></div>
+      <div class="desc mt-1 text-sm text-slate-600">仕入れ先の登録・編集・削除。材料の紐付け先。</div>
     </a>
   </div>
 
-  <div class="dash-hero">
-    <div class="title" style="font-weight:700;">🔧 メモ</div>
-    <div class="desc muted">
+  <div class="dash-hero rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+    <div class="title text-base font-semibold text-slate-900">🔧 メモ</div>
+    <div class="desc muted mt-2 text-sm text-slate-600">
       リンク先が404になる場合は、その機能のURLが別名になっているだけです（あとでTOPのhrefを合わせればOK）。
       <br>まずは「迷わず操作できる導線」を優先して作ってます。
     </div>
