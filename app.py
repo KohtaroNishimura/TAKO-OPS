@@ -2246,7 +2246,7 @@ def shopping_list():
         LEFT JOIN inv ON inv.item_id = i.item_id
         LEFT JOIN suppliers s ON s.supplier_id = i.supplier_id
         WHERE {where_sql}
-          AND COALESCE(inv.qty, 0) <= COALESCE(i.reorder_point, 0)
+          AND COALESCE(inv.qty, 0) < COALESCE(i.reorder_point, 0)
           AND COALESCE(i.reorder_point, 0) > 0
         ORDER BY supplier_name ASC, i.name ASC
         """,
