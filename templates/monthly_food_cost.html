@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>月次 食材原価率（理想{{ (ideal_ratio*100)|round(0) }}%との差）</h2>
+
+    <form method="get" action="{{ url_for('monthly_food_cost') }}" style="margin-bottom:12px;">
+      <label>対象月</label>
+      <input type="month" name="ym" value="{{ ym }}">
+
+      <label style="margin-left:12px;">棚卸場所</label>
+      <select name="location">
+        <option value="WAREHOUSE" {{ "selected" if location=="WAREHOUSE" else "" }}>WAREHOUSE（倉庫/自宅）</option>
+        <option value="STORE" {{ "selected" if location=="STORE" else "" }}>STORE（店舗/トレーラー）</option>
+      </select>
+
+      <button type="submit" style="margin-left:12px;">表示</button>
+    </form>
+
+    <p class="muted">期間：{{ start_date }} 〜 {{ next_date }}（{{ next_date }}は含まない）</p>
+
+    {% if begin_missing %}
+      <p style="color:#b00;"><b>注意：</b>期首棚卸（前月末の月次棚卸）が見つかりません。期首在庫は0として計算しています。</p>
+    {% else %}
+      <p class="muted">期首棚卸：{{ begin_taken_at }}</p>
+    {% endif %}
+
+    {% if end_missing %}
+      <p style="color:#b00;"><b>注意：</b>当月の期末棚卸（月次棚卸）が見つかりません。期末在庫は0として計算しています。</p>
+    {% else %}
+      <p class="muted">期末棚卸：{{ end_taken_at }}</p>
+    {% endif %}
+
+    <hr style="margin:16px 0;">
+
+    <table>
+      <tbody>
+        <tr><th>売上（円）</th><td>{{ "%.0f"|format(sales) }}</td></tr>
+        <tr><th>期首在庫金額（円）</th><td>{{ "%.0f"|format(begin_value) }}</td></tr>
+        <tr><th>当月仕入金額（円）</th><td>{{ "%.0f"|format(purchases_cost) }}</td></tr>
+        <tr><th>期末在庫金額（円）</th><td>{{ "%.0f"|format(end_value) }}</td></tr>
+        <tr><th>食材原価（COGS）（円）</th><td><b>{{ "%.0f"|format(cogs) }}</b></td></tr>
+        <tr>
+          <th>食材原価率</th>
+          <td>
+            {% if ratio is none %}
+              売上が0のため計算不可
+            {% else %}
+              <b>{{ (ratio*100)|round(1) }}%</b>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th>理想{{ (ideal_ratio*100)|round(0) }}%との差</th>
+          <td>
+            {% if ratio is none %}
+              -
+            {% else %}
+              <b>{{ diff_pp|round(1) }}pp</b>
+              （{{ "%.0f"|format(diff_yen) }}円）
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <hr style="margin:16px 0;">
+
+    <h3>当月仕入内訳（FOOD）</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>材料</th>
+          <th>数量合計</th>
+          <th>単位</th>
+          <th>金額（円）</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in purchase_breakdown %}
+          <tr>
+            <td>{{ r["name"] }}</td>
+            <td>{{ "%.2f"|format(r["qty_sum"]) }}</td>
+            <td>{{ r["unit_base"] }}</td>
+            <td>{{ "%.0f"|format(r["amount"]) }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4">仕入データがありません。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <hr style="margin:16px 0;">
+
+    <h3>期末棚卸内訳（FOOD）</h3>
+    {% if end_missing %}
+      <p>期末棚卸がないため表示できません。</p>
+    {% else %}
+      <table>
+        <thead>
+          <tr>
+            <th>材料</th>
+            <th>数量</th>
+            <th>単位</th>
+            <th>参考単価</th>
+            <th>金額（円）</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in end_lines %}
+            <tr>
+              <td>{{ r["name"] }}</td>
+              <td>{{ "%.2f"|format(r["counted_qty"]) }}</td>
+              <td>{{ r["unit_base"] }}</td>
+              <td>{{ "%.0f"|format(r["ref_unit_price"]) }}</td>
+              <td>{{ "%.0f"|format(r["amount"]) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5">棚卸明細がありません。</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+{% endblock %}

@@ -4,6 +4,7 @@ import os
 import sqlite3
 from itertools import groupby
 import math
+from datetime import date, datetime
 from flask import Flask, g, redirect, render_template, request, url_for, flash, abort
 
 APP_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -982,6 +983,500 @@ def ceil_to_step(x: float, step: float) -> float:
     return math.ceil((x - 1e-12) / step) * step
 
 
+def month_range(ym: str):
+    """
+    ym: 'YYYY-MM'
+    return: (start_date_str, next_month_start_str)
+    """
+    y, m = ym.split("-")
+    y = int(y)
+    m = int(m)
+    start = date(y, m, 1)
+    if m == 12:
+        nxt = date(y + 1, 1, 1)
+    else:
+        nxt = date(y, m + 1, 1)
+    return start.isoformat(), nxt.isoformat()
+
+
+def format_daily_report_for_line(rep) -> str:
+    """
+    LINEへコピペする用の本文を作る
+    形式:
+    【日報】
+    ロス
+    売れたバッチ
+    生産時間(入力値)
+
+    売上(カンマ区切り)
+
+    所感
+    """
+    waste = int(rep["waste_pieces"] or 0)
+    sold = rep["sold_batches"]
+    sold_str = str(sold if sold is not None else 0)
+
+    prod = rep["production_minutes"]
+    prod_str = str(int(prod or 0))  # そのまま数字で出す（4とか240とか）
+
+    sales = rep["sales_amount"]
+    sales_int = int(round(float(sales or 0)))
+    sales_str = f"{sales_int:,}"
+
+    impression = (rep["impression"] or "").strip()
+
+    return (
+        "【日報】\n"
+        f"{waste}\n"
+        f"{sold_str}\n"
+        f"{prod_str}\n\n"
+        f"{sales_str}\n\n"
+        f"{impression}"
+    )
+
+
+def get_active_pieces_per_batch(db) -> int:
+    row = db.execute(
+        """
+        SELECT pieces_per_batch
+        FROM batch_config
+        WHERE is_active = 1
+        ORDER BY batch_config_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    return int(row["pieces_per_batch"]) if row else 80  # 念のため80 fallback
+
+
+def get_active_batch_config(db):
+    row = db.execute(
+        """
+        SELECT batch_config_id, name, pieces_per_batch
+        FROM batch_config
+        WHERE is_active = 1
+        ORDER BY batch_config_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    return row
+
+
+def regenerate_inventory_tx_for_daily_report(db, daily_report_id: int) -> int:
+    """
+    日報IDに紐づく inventory_tx（CONSUME/WASTE）を作り直す。
+    return: 作成したtx件数
+    """
+    rep = db.execute(
+        """
+        SELECT daily_report_id, report_date, sold_batches, waste_pieces
+        FROM daily_reports
+        WHERE daily_report_id = ?
+        """,
+        (daily_report_id,),
+    ).fetchone()
+
+    if rep is None:
+        return 0
+
+    report_date = rep["report_date"]  # 'YYYY-MM-DD'
+    sold_batches = float(rep["sold_batches"] or 0)
+    waste_pieces = int(rep["waste_pieces"] or 0)
+
+    pieces_per_batch = get_active_pieces_per_batch(db)
+    waste_batches = (waste_pieces / pieces_per_batch) if pieces_per_batch > 0 else 0.0
+
+    happened_at = f"{report_date} 09:00:00"
+    location = "STORE"
+
+    # まず既存の自動生成分を削除（編集時に二重計上させない）
+    db.execute(
+        """
+        DELETE FROM inventory_tx
+        WHERE ref_type = 'DAILY_REPORT'
+          AND ref_id = ?
+          AND tx_type IN ('CONSUME', 'WASTE')
+        """,
+        (daily_report_id,),
+    )
+
+    # auto_consume=1 だけ対象（週次で数えるものは0にしておけばOK）
+    recipe_rows = db.execute(
+        """
+        SELECT rb.item_id, rb.qty_per_batch, i.unit_base
+        FROM recipe_batch rb
+        JOIN batch_config bc ON bc.batch_config_id = rb.batch_config_id
+        JOIN items i ON i.item_id = rb.item_id
+        WHERE rb.auto_consume = 1
+          AND bc.is_active = 1
+        """
+    ).fetchall()
+
+    created = 0
+
+    for r in recipe_rows:
+        item_id = r["item_id"]
+        qty_per_batch = float(r["qty_per_batch"] or 0)
+
+        # 通常消費（売れたバッチ数分）
+        consume_qty = qty_per_batch * sold_batches
+
+        # ロス消費（ロス個数→バッチ換算→消費量）
+        waste_qty = qty_per_batch * waste_batches
+
+        # マイナスで在庫を減らす
+        if abs(consume_qty) > 1e-9:
+            db.execute(
+                """
+                INSERT INTO inventory_tx
+                  (happened_at, item_id, qty_delta, tx_type, location, ref_type, ref_id, note)
+                VALUES
+                  (?, ?, ?, 'CONSUME', ?, 'DAILY_REPORT', ?, ?)
+                """,
+                (
+                    happened_at,
+                    item_id,
+                    -consume_qty,
+                    location,
+                    daily_report_id,
+                    f"日報自動消費：sold_batches={sold_batches}",
+                ),
+            )
+            created += 1
+
+        if abs(waste_qty) > 1e-9:
+            db.execute(
+                """
+                INSERT INTO inventory_tx
+                  (happened_at, item_id, qty_delta, tx_type, location, ref_type, ref_id, note)
+                VALUES
+                  (?, ?, ?, 'WASTE', ?, 'DAILY_REPORT', ?, ?)
+                """,
+                (
+                    happened_at,
+                    item_id,
+                    -waste_qty,
+                    location,
+                    daily_report_id,
+                    f"日報自動ロス：waste_pieces={waste_pieces}（{waste_batches:.3f} batches）",
+                ),
+            )
+            created += 1
+
+    return created
+
+
+@app.get("/daily-reports")
+def daily_reports_list():
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT daily_report_id, report_date, sold_batches, waste_pieces, production_minutes, sales_amount
+        FROM daily_reports
+        ORDER BY report_date DESC, daily_report_id DESC
+        """
+    ).fetchall()
+    return render_template("daily_reports_list.html", reports=rows)
+
+
+@app.get("/daily-reports/new")
+def daily_report_new():
+    today = date.today().isoformat()
+    return render_template("daily_report_new.html", default_date=today)
+
+
+@app.post("/daily-reports")
+def daily_report_create():
+    db = get_db()
+
+    report_date = (request.form.get("report_date") or "").strip()
+    if not report_date:
+        flash("日付（report_date）は必須です", "error")
+        return redirect(url_for("daily_report_new"))
+
+    sold_batches = float((request.form.get("sold_batches") or "0").strip() or 0)
+    waste_pieces = int((request.form.get("waste_pieces") or "0").strip() or 0)
+    production_minutes = int((request.form.get("production_minutes") or "0").strip() or 0)
+    sales_amount = float((request.form.get("sales_amount") or "0").strip() or 0)
+    impression = (request.form.get("impression") or "").strip()
+
+    # 1日1回運用：同じ日付があるなら編集へ誘導（好みで）
+    exists = db.execute(
+        """
+        SELECT daily_report_id FROM daily_reports WHERE report_date = ?
+        LIMIT 1
+        """,
+        (report_date,),
+    ).fetchone()
+    if exists:
+        flash("この日付の日報は既にあります。編集してください。", "error")
+        return redirect(
+            url_for("daily_report_edit", daily_report_id=exists["daily_report_id"])
+        )
+
+    try:
+        db.execute("BEGIN")
+
+        db.execute(
+            """
+            INSERT INTO daily_reports
+              (report_date, sold_batches, waste_pieces, production_minutes, sales_amount, impression, created_at)
+            VALUES
+              (?, ?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (
+                report_date,
+                sold_batches,
+                waste_pieces,
+                production_minutes,
+                sales_amount,
+                impression,
+            ),
+        )
+
+        daily_report_id = db.execute("SELECT last_insert_rowid() AS id").fetchone()[
+            "id"
+        ]
+
+        created_tx = regenerate_inventory_tx_for_daily_report(db, daily_report_id)
+
+        db.execute("COMMIT")
+        flash(f"日報を登録しました（inventory_tx自動生成: {created_tx}件）", "success")
+        return redirect(url_for("daily_report_detail", daily_report_id=daily_report_id))
+
+    except Exception as e:
+        db.execute("ROLLBACK")
+        flash(f"日報登録に失敗しました: {e}", "error")
+        return redirect(url_for("daily_report_new"))
+
+
+@app.get("/daily-reports/<int:daily_report_id>/edit")
+def daily_report_edit(daily_report_id: int):
+    db = get_db()
+    rep = db.execute(
+        """
+        SELECT * FROM daily_reports WHERE daily_report_id = ?
+        """,
+        (daily_report_id,),
+    ).fetchone()
+    if rep is None:
+        abort(404)
+    return render_template("daily_report_edit.html", rep=rep)
+
+
+@app.post("/daily-reports/<int:daily_report_id>/edit")
+def daily_report_update(daily_report_id: int):
+    db = get_db()
+
+    report_date = (request.form.get("report_date") or "").strip()
+    sold_batches = float((request.form.get("sold_batches") or "0").strip() or 0)
+    waste_pieces = int((request.form.get("waste_pieces") or "0").strip() or 0)
+    production_minutes = int((request.form.get("production_minutes") or "0").strip() or 0)
+    sales_amount = float((request.form.get("sales_amount") or "0").strip() or 0)
+    impression = (request.form.get("impression") or "").strip()
+
+    try:
+        db.execute("BEGIN")
+
+        db.execute(
+            """
+            UPDATE daily_reports
+            SET report_date = ?,
+                sold_batches = ?,
+                waste_pieces = ?,
+                production_minutes = ?,
+                sales_amount = ?,
+                impression = ?
+            WHERE daily_report_id = ?
+            """,
+            (
+                report_date,
+                sold_batches,
+                waste_pieces,
+                production_minutes,
+                sales_amount,
+                impression,
+                daily_report_id,
+            ),
+        )
+
+        created_tx = regenerate_inventory_tx_for_daily_report(db, daily_report_id)
+
+        db.execute("COMMIT")
+        flash(f"日報を更新しました（inventory_tx再生成: {created_tx}件）", "success")
+        return redirect(url_for("daily_report_detail", daily_report_id=daily_report_id))
+
+    except Exception as e:
+        db.execute("ROLLBACK")
+        flash(f"日報更新に失敗しました: {e}", "error")
+        return redirect(url_for("daily_report_edit", daily_report_id=daily_report_id))
+
+
+@app.get("/daily-reports/<int:daily_report_id>")
+def daily_report_detail(daily_report_id: int):
+    db = get_db()
+    rep = db.execute(
+        """
+        SELECT *
+        FROM daily_reports
+        WHERE daily_report_id = ?
+        """,
+        (daily_report_id,),
+    ).fetchone()
+
+    if rep is None:
+        abort(404)
+
+    line_text = format_daily_report_for_line(rep)
+    return render_template("daily_report_detail.html", rep=rep, line_text=line_text)
+
+
+@app.get("/recipe-batch")
+def recipe_batch_edit():
+    db = get_db()
+
+    bc = get_active_batch_config(db)
+    if bc is None:
+        flash("アクティブなBATCH_CONFIGがありません。先に batch_config を作成してください。", "error")
+        return redirect(url_for("items_list"))
+
+    batch_config_id = bc["batch_config_id"]
+
+    # items と recipe_batch を紐付けて表示
+    rows = db.execute(
+        """
+        SELECT
+          i.item_id,
+          i.name,
+          i.unit_base,
+          COALESCE(i.cost_group, 'SUPPLIES') AS cost_group,
+          COALESCE(rb.qty_per_batch, 0) AS qty_per_batch,
+          COALESCE(rb.auto_consume, 0) AS auto_consume
+        FROM items i
+        LEFT JOIN recipe_batch rb
+          ON rb.item_id = i.item_id
+         AND rb.batch_config_id = ?
+        WHERE i.is_active = 1
+        ORDER BY
+          CASE COALESCE(i.cost_group,'SUPPLIES') WHEN 'FOOD' THEN 0 ELSE 1 END,
+          i.name ASC
+        """,
+        (batch_config_id,),
+    ).fetchall()
+
+    return render_template(
+        "recipe_batch_edit.html",
+        bc=bc,
+        rows=rows,
+    )
+
+
+@app.post("/recipe-batch")
+def recipe_batch_update():
+    db = get_db()
+
+    batch_config_id = request.form.get("batch_config_id")
+    if not batch_config_id:
+        abort(400)
+    batch_config_id = int(batch_config_id)
+
+    # 対象items（アクティブ）
+    items = db.execute(
+        """
+        SELECT item_id, unit_base
+        FROM items
+        WHERE is_active = 1
+        ORDER BY item_id
+        """
+    ).fetchall()
+
+    # 既存レシピ（qtyを保持するため qty_per_batch も取る）
+    existing = db.execute(
+        """
+        SELECT recipe_id, item_id, qty_per_batch, auto_consume
+        FROM recipe_batch
+        WHERE batch_config_id = ?
+        """,
+        (batch_config_id,),
+    ).fetchall()
+
+    existing_by_item = {
+        r["item_id"]: {
+            "recipe_id": r["recipe_id"],
+            "qty_per_batch": float(r["qty_per_batch"] or 0),
+            "auto_consume": int(r["auto_consume"] or 0),
+        }
+        for r in existing
+    }
+
+    updated = 0
+    inserted = 0
+
+    try:
+        db.execute("BEGIN")
+
+        for it in items:
+            item_id = it["item_id"]
+            unit_base = it["unit_base"]
+
+            # ✅ auto_consume はチェックのON/OFFだけで設定できる
+            auto_consume = 1 if request.form.get(f"auto_{item_id}") == "1" else 0
+
+            # qty_per_batch：空欄なら「既存値を保持」する
+            raw_qty = (request.form.get(f"qty_{item_id}") or "").strip()
+
+            if item_id in existing_by_item:
+                # 既存がある場合：空欄なら保持、入力があれば更新
+                qty = existing_by_item[item_id]["qty_per_batch"]
+                if raw_qty != "":
+                    try:
+                        qty = float(raw_qty)
+                    except ValueError:
+                        pass  # 変な入力は無視して保持
+            else:
+                # 既存がない場合：空欄なら0（ただしauto_consume=1なら「設定行」を作る）
+                if raw_qty == "":
+                    qty = 0.0
+                else:
+                    try:
+                        qty = float(raw_qty)
+                    except ValueError:
+                        qty = 0.0
+
+            # pcsも小数を許可（小数第3位まで想定）
+
+            if item_id in existing_by_item:
+                # 既存行：auto_consume だけの変更もOK、qtyは空欄なら保持
+                recipe_id = existing_by_item[item_id]["recipe_id"]
+                db.execute(
+                    """
+                    UPDATE recipe_batch
+                    SET qty_per_batch = ?, auto_consume = ?
+                    WHERE recipe_id = ?
+                    """,
+                    (qty, auto_consume, recipe_id),
+                )
+                updated += 1
+            else:
+                # 新規：qty>0 もしくは auto_consume=1 のときだけ行を作る
+                # （auto_consume=1 で qty=0 の「設定だけ」もOK）
+                if qty > 0 or auto_consume == 1:
+                    db.execute(
+                        """
+                        INSERT INTO recipe_batch (batch_config_id, item_id, qty_per_batch, auto_consume)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (batch_config_id, item_id, qty, auto_consume),
+                    )
+                    inserted += 1
+
+        db.execute("COMMIT")
+        flash(f"保存しました（追加:{inserted} 更新:{updated}）", "success")
+        return redirect(url_for("recipe_batch_edit"))
+
+    except Exception as e:
+        db.execute("ROLLBACK")
+        flash(f"保存に失敗しました: {e}", "error")
+        return redirect(url_for("recipe_batch_edit"))
 @app.get("/stocktakes")
 def stocktakes_list():
     db = get_db()
@@ -1236,9 +1731,218 @@ def stocktake_detail(stocktake_id: int):
     return render_template(
         "stocktake_detail.html",
         header=header,
+        st=header,
         lines=lines,
         adjusts=adjusts,
     )
+
+
+# -----------------------------
+# Stocktakes (月次: 新フォーム)
+# -----------------------------
+@app.get("/stocktakes/monthly/new")
+def stocktake_monthly_new():
+    db = get_db()
+
+    # FOOD(38品目)だけ数える運用が基本。必要なら ?group=ALL で全表示
+    group = (request.args.get("group") or "FOOD").upper()
+    if group not in ("FOOD", "ALL"):
+        group = "FOOD"
+
+    location = (request.args.get("location") or "WAREHOUSE").upper()
+    if location not in ("STORE", "WAREHOUSE"):
+        location = "WAREHOUSE"
+
+    # 入力は日付だけ（デフォルト今日）
+    taken_date = (request.args.get("taken_date") or date.today().isoformat()).strip()
+
+    # 対象アイテム
+    if group == "FOOD":
+        items = db.execute(
+            """
+            SELECT item_id, name, unit_base, ref_unit_price
+            FROM items
+            WHERE is_active = 1 AND cost_group = 'FOOD'
+            ORDER BY name ASC
+            """
+        ).fetchall()
+    else:
+        items = db.execute(
+            """
+            SELECT item_id, name, unit_base, ref_unit_price
+            FROM items
+            WHERE is_active = 1
+            ORDER BY name ASC
+            """
+        ).fetchall()
+
+    # 現在庫（inventory_tx の合計）
+    cur_rows = db.execute(
+        """
+        SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
+        FROM inventory_tx
+        WHERE location = ?
+        GROUP BY item_id
+        """,
+        (location,),
+    ).fetchall()
+    current_map = {r["item_id"]: float(r["qty"] or 0) for r in cur_rows}
+
+    # 画面表示用：現在庫を埋めた行リスト
+    rows = []
+    for it in items:
+        cur = current_map.get(it["item_id"], 0.0)
+        rows.append(
+            {
+                "item_id": it["item_id"],
+                "name": it["name"],
+                "unit_base": it["unit_base"],
+                "ref_unit_price": float(it["ref_unit_price"] or 0),
+                "current_qty": cur,
+                # 入力の初期値を「現在庫」にして、ユーザーは差分があれば直すだけ
+                "counted_default": cur,
+            }
+        )
+
+    return render_template(
+        "stocktake_monthly_new.html",
+        rows=rows,
+        taken_date=taken_date,
+        location=location,
+        group=group,
+    )
+
+
+@app.post("/stocktakes/monthly")
+def stocktake_monthly_create():
+    db = get_db()
+
+    group = (request.form.get("group") or "FOOD").upper()
+    if group not in ("FOOD", "ALL"):
+        group = "FOOD"
+
+    location = (request.form.get("location") or "WAREHOUSE").upper()
+    if location not in ("STORE", "WAREHOUSE"):
+        location = "WAREHOUSE"
+
+    taken_date = (request.form.get("taken_date") or "").strip()
+    if not taken_date:
+        taken_date = date.today().isoformat()
+
+    # DBには日時文字列で保存（固定時刻でOK）
+    taken_at = f"{taken_date} 09:00:00"
+    note = (request.form.get("note") or "").strip()
+
+    # 対象アイテムをDBから取り直す（GET時点から在庫が変わってもOKにするため）
+    if group == "FOOD":
+        items = db.execute(
+            """
+            SELECT item_id, name, unit_base
+            FROM items
+            WHERE is_active = 1 AND cost_group = 'FOOD'
+            ORDER BY name ASC
+            """
+        ).fetchall()
+    else:
+        items = db.execute(
+            """
+            SELECT item_id, name, unit_base
+            FROM items
+            WHERE is_active = 1
+            ORDER BY name ASC
+            """
+        ).fetchall()
+
+    # 現在庫（POST時点）
+    cur_rows = db.execute(
+        """
+        SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
+        FROM inventory_tx
+        WHERE location = ?
+        GROUP BY item_id
+        """,
+        (location,),
+    ).fetchall()
+    current_map = {r["item_id"]: float(r["qty"] or 0) for r in cur_rows}
+
+    try:
+        db.execute("BEGIN")
+
+        # stocktakes を作成
+        db.execute(
+            """
+            INSERT INTO stocktakes (taken_at, scope, location, note)
+            VALUES (?, 'MONTHLY', ?, ?)
+            """,
+            (taken_at, location, note),
+        )
+        stocktake_id = db.execute("SELECT last_insert_rowid() AS id").fetchone()[
+            "id"
+        ]
+
+        # lines と ADJUST を作成
+        adjust_count = 0
+
+        for it in items:
+            item_id = it["item_id"]
+            unit_base = it["unit_base"]
+
+            raw = (request.form.get(f"counted_{item_id}") or "").strip()
+            if raw == "":
+                # 空欄なら「現在庫のまま」にする（入力を楽に）
+                counted = current_map.get(item_id, 0.0)
+            else:
+                try:
+                    counted = float(raw)
+                except ValueError:
+                    counted = current_map.get(item_id, 0.0)
+
+            # pcsは整数扱い（ゆるく丸め）
+            if unit_base == "pcs":
+                counted = float(int(round(counted)))
+
+            # stocktake_lines に保存（後で在庫金額計算に使う）
+            db.execute(
+                """
+                INSERT INTO stocktake_lines (stocktake_id, item_id, counted_qty)
+                VALUES (?, ?, ?)
+                """,
+                (stocktake_id, item_id, counted),
+            )
+
+            current = current_map.get(item_id, 0.0)
+            delta = counted - current
+
+            # ほぼ0は無視（履歴を綺麗に）
+            if abs(delta) < 1e-9:
+                continue
+
+            db.execute(
+                """
+                INSERT INTO inventory_tx
+                  (happened_at, item_id, qty_delta, tx_type, location, ref_type, ref_id, note)
+                VALUES
+                  (?, ?, ?, 'ADJUST', ?, 'STOCKTAKE', ?, ?)
+                """,
+                (
+                    taken_at,
+                    item_id,
+                    delta,
+                    location,
+                    stocktake_id,
+                    "MONTHLY棚卸差分（ADJUST）",
+                ),
+            )
+            adjust_count += 1
+
+        db.execute("COMMIT")
+        flash(f"月次棚卸を登録しました（ADJUST反映: {adjust_count}件）", "success")
+        return redirect(url_for("stocktake_detail", stocktake_id=stocktake_id))
+
+    except Exception as e:
+        db.execute("ROLLBACK")
+        flash(f"棚卸登録に失敗しました: {e}", "error")
+        return redirect(url_for("stocktake_monthly_new"))
 
 
 # -----------------------------
@@ -1602,6 +2306,204 @@ def shopping_list():
     return render_template(
         "shopping_list.html",
         grouped=grouped,
+    )
+
+
+# -----------------------------
+# Reports (月次原価)
+# -----------------------------
+@app.get("/reports/monthly-food-cost")
+def monthly_food_cost():
+    # 月選択：?ym=2026-01（なければ今月）
+    ym = (request.args.get("ym") or date.today().strftime("%Y-%m")).strip()
+
+    # 在庫評価はどの場所の月次棚卸を使うか（基本は倉庫）
+    location = (request.args.get("location") or "WAREHOUSE").upper()
+    if location not in ("STORE", "WAREHOUSE"):
+        location = "WAREHOUSE"
+
+    ideal_ratio = 0.38  # 理想38%
+
+    start_date, next_date = month_range(ym)
+
+    db = get_db()
+
+    # 売上（daily_reports.sales_amount の月合計）
+    sales = db.execute(
+        """
+        SELECT COALESCE(SUM(sales_amount), 0) AS v
+        FROM daily_reports
+        WHERE report_date >= ?
+          AND report_date < ?
+        """,
+        (start_date, next_date),
+    ).fetchone()["v"]
+
+    # 当月仕入金額（FOODのみ）
+    # unit_priceがNULLならref_unit_priceで代用
+    purchases_cost = db.execute(
+        """
+        SELECT COALESCE(SUM(pl.qty * COALESCE(pl.unit_price, i.ref_unit_price)), 0) AS v
+        FROM purchase_lines pl
+        JOIN purchases p ON p.purchase_id = pl.purchase_id
+        JOIN items i ON i.item_id = pl.item_id
+        WHERE i.cost_group = 'FOOD'
+          AND date(p.purchased_at) >= ?
+          AND date(p.purchased_at) < ?
+        """,
+        (start_date, next_date),
+    ).fetchone()["v"]
+
+    # 期首：開始日より前の最新MONTHLY棚卸（location指定）
+    begin_st = db.execute(
+        """
+        SELECT stocktake_id, taken_at
+        FROM stocktakes
+        WHERE scope = 'MONTHLY'
+          AND location = ?
+          AND date(taken_at) < ?
+        ORDER BY taken_at DESC, stocktake_id DESC
+        LIMIT 1
+        """,
+        (location, start_date),
+    ).fetchone()
+    if begin_st is None:
+        begin_st = db.execute(
+            """
+            SELECT stocktake_id, taken_at
+            FROM stocktakes
+            WHERE scope = 'MONTHLY'
+              AND location = ?
+              AND date(taken_at) >= ?
+              AND date(taken_at) < ?
+            ORDER BY taken_at ASC, stocktake_id ASC
+            LIMIT 1
+            """,
+            (location, start_date, next_date),
+        ).fetchone()
+
+    begin_value = 0.0
+    begin_taken_at = None
+    begin_missing = False
+    if begin_st:
+        begin_taken_at = begin_st["taken_at"]
+        begin_value = db.execute(
+            """
+            SELECT COALESCE(SUM(sl.counted_qty * i.ref_unit_price), 0) AS v
+            FROM stocktake_lines sl
+            JOIN items i ON i.item_id = sl.item_id
+            WHERE sl.stocktake_id = ?
+              AND i.cost_group = 'FOOD'
+            """,
+            (begin_st["stocktake_id"],),
+        ).fetchone()["v"]
+    else:
+        begin_missing = True
+
+    # 期末：当月内の最新MONTHLY棚卸（location指定）
+    end_st = db.execute(
+        """
+        SELECT stocktake_id, taken_at
+        FROM stocktakes
+        WHERE scope = 'MONTHLY'
+          AND location = ?
+          AND date(taken_at) >= ?
+          AND date(taken_at) < ?
+        ORDER BY taken_at DESC, stocktake_id DESC
+        LIMIT 1
+        """,
+        (location, start_date, next_date),
+    ).fetchone()
+
+    end_value = 0.0
+    end_taken_at = None
+    end_missing = False
+    end_lines = []
+    if end_st:
+        end_taken_at = end_st["taken_at"]
+        end_value = db.execute(
+            """
+            SELECT COALESCE(SUM(sl.counted_qty * i.ref_unit_price), 0) AS v
+            FROM stocktake_lines sl
+            JOIN items i ON i.item_id = sl.item_id
+            WHERE sl.stocktake_id = ?
+              AND i.cost_group = 'FOOD'
+            """,
+            (end_st["stocktake_id"],),
+        ).fetchone()["v"]
+
+        # 期末棚卸の内訳（表示用）
+        end_lines = db.execute(
+            """
+            SELECT
+              i.name,
+              i.unit_base,
+              sl.counted_qty,
+              i.ref_unit_price,
+              (sl.counted_qty * i.ref_unit_price) AS amount
+            FROM stocktake_lines sl
+            JOIN items i ON i.item_id = sl.item_id
+            WHERE sl.stocktake_id = ?
+              AND i.cost_group = 'FOOD'
+            ORDER BY amount DESC, i.name ASC
+            """,
+            (end_st["stocktake_id"],),
+        ).fetchall()
+    else:
+        end_missing = True
+
+    # 当月仕入の内訳（表示用）
+    purchase_breakdown = db.execute(
+        """
+        SELECT
+          i.name,
+          i.unit_base,
+          SUM(pl.qty) AS qty_sum,
+          SUM(pl.qty * COALESCE(pl.unit_price, i.ref_unit_price)) AS amount
+        FROM purchase_lines pl
+        JOIN purchases p ON p.purchase_id = pl.purchase_id
+        JOIN items i ON i.item_id = pl.item_id
+        WHERE i.cost_group = 'FOOD'
+          AND date(p.purchased_at) >= ?
+          AND date(p.purchased_at) < ?
+        GROUP BY i.item_id
+        ORDER BY amount DESC, i.name ASC
+        """,
+        (start_date, next_date),
+    ).fetchall()
+
+    # 原価計算
+    cogs = float(begin_value) + float(purchases_cost) - float(end_value)
+
+    ratio = None
+    if float(sales) > 0:
+        ratio = cogs / float(sales)  # 0.38など
+
+    ideal_cogs = float(sales) * ideal_ratio
+    diff_yen = cogs - ideal_cogs
+    diff_pp = None if ratio is None else (ratio - ideal_ratio) * 100  # percentage points
+
+    return render_template(
+        "monthly_food_cost.html",
+        ym=ym,
+        start_date=start_date,
+        next_date=next_date,
+        location=location,
+        ideal_ratio=ideal_ratio,
+        sales=float(sales),
+        purchases_cost=float(purchases_cost),
+        begin_value=float(begin_value),
+        end_value=float(end_value),
+        cogs=float(cogs),
+        ratio=ratio,  # None or 0.xx
+        diff_yen=float(diff_yen),
+        diff_pp=diff_pp,
+        begin_taken_at=begin_taken_at,
+        end_taken_at=end_taken_at,
+        begin_missing=begin_missing,
+        end_missing=end_missing,
+        purchase_breakdown=purchase_breakdown,
+        end_lines=end_lines,
     )
 
 

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>レシピ設定（1バッチあたり消費量）</h2>
+
+  <p class="muted">
+    対象バッチ：<b>{{ bc["name"] }}</b>（{{ bc["pieces_per_batch"] }}個/バッチ）<br>
+    qty_per_batch は「1バッチ分で消費する量」です（単位は材料の unit_base）。
+  </p>
+
+  <form method="post" action="{{ url_for('recipe_batch_update') }}">
+    <input type="hidden" name="batch_config_id" value="{{ bc['batch_config_id'] }}">
+
+    <table>
+      <thead>
+        <tr>
+          <th>材料</th>
+          <th>グループ</th>
+          <th>単位</th>
+          <th>1バッチ消費量</th>
+          <th>自動減算</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+          <tr>
+            <td>{{ r["name"] }}</td>
+            <td>{{ r["cost_group"] }}</td>
+            <td>{{ r["unit_base"] }}</td>
+            <td>
+              <input
+                type="number"
+                name="qty_{{ r['item_id'] }}"
+                min="0"
+                step="0.001"
+                value="{{ '%.3f'|format(r['qty_per_batch']) }}"
+                style="width: 140px;"
+                placeholder="0なら対象外"
+                inputmode="decimal"
+              >
+            </td>
+            <td style="text-align:center;">
+              <input
+                type="checkbox"
+                name="auto_{{ r['item_id'] }}"
+                value="1"
+                {% if (r["auto_consume"]|int) == 1 %}checked{% endif %}
+              >
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="actions" style="margin-top:12px;">
+      <button class="btn" type="submit">保存</button>
+    </div>
+  </form>
+
+  <hr style="margin:16px 0;">
+
+  <p class="muted">
+    ヒント：qty_per_batch を入れた材料だけが日報登録時に自動減算されます（FOODのみ）。
+    空欄/0にするとレシピから外れます。
+  </p>
+</div>
+{% endblock %}

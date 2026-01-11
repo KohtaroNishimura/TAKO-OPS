@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>日報（{{ rep["report_date"] }}）</h2>
+
+  <div style="margin: 12px 0;">
+    <a class="btn" href="{{ url_for('daily_reports_list') }}">日報一覧へ</a>
+    <a class="btn" href="{{ url_for('daily_report_edit', daily_report_id=rep['daily_report_id']) }}">編集</a>
+  </div>
+
+  <h3>LINE送信用（コピペ用）</h3>
+
+  <textarea id="lineText" rows="14" style="width:100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;" readonly>{{ line_text }}</textarea>
+
+  <div style="margin-top: 10px;">
+    <button class="btn" type="button" onclick="copyLineText()">コピー</button>
+    <span id="copyStatus" class="muted" style="margin-left:10px;"></span>
+  </div>
+</div>
+
+<script>
+async function copyLineText() {
+  const el = document.getElementById("lineText");
+  const status = document.getElementById("copyStatus");
+  const text = el.value;
+
+  // 1) まずは modern API
+  try {
+    await navigator.clipboard.writeText(text);
+    status.textContent = "コピーしました！LINEに貼り付けて送れます。";
+    return;
+  } catch (e) {
+    // 2) フォールバック（古い方式）
+    el.focus();
+    el.select();
+    try {
+      document.execCommand("copy");
+      status.textContent = "コピーしました！LINEに貼り付けて送れます。";
+    } catch (e2) {
+      status.textContent = "コピーに失敗しました。テキストを手動で選択してコピーしてください。";
+    }
+  }
+}
+</script>
+{% endblock %}

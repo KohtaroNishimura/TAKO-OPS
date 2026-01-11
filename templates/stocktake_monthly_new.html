@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>月次棚卸（{{ "食材のみ" if group=="FOOD" else "全て" }}）</h2>
+
+  <form method="get" action="{{ url_for('stocktake_monthly_new') }}" style="margin-bottom:12px;">
+    <label>棚卸日</label>
+    <input type="date" name="taken_date" value="{{ taken_date }}">
+
+    <label style="margin-left:12px;">場所</label>
+    <select name="location">
+      <option value="WAREHOUSE" {{ "selected" if location=="WAREHOUSE" else "" }}>WAREHOUSE（倉庫/自宅）</option>
+      <option value="STORE" {{ "selected" if location=="STORE" else "" }}>STORE（店舗/トレーラー）</option>
+    </select>
+
+    <label style="margin-left:12px;">表示</label>
+    <select name="group">
+      <option value="FOOD" {{ "selected" if group=="FOOD" else "" }}>食材（FOOD）</option>
+      <option value="ALL" {{ "selected" if group=="ALL" else "" }}>全て</option>
+    </select>
+
+    <button type="submit" style="margin-left:12px;">表示</button>
+  </form>
+
+  <form method="post" action="{{ url_for('stocktake_monthly_create') }}">
+    <input type="hidden" name="taken_date" value="{{ taken_date }}">
+    <input type="hidden" name="location" value="{{ location }}">
+    <input type="hidden" name="group" value="{{ group }}">
+
+    <label>メモ（任意）</label>
+    <input name="note" placeholder="例：月末棚卸（倉庫に寄せ）">
+
+    <p class="muted">
+      入力欄は初期値が「現在庫」です。数えた数量に直して登録すると、差分がADJUSTとして反映されます。
+      空欄にすると「現在庫のまま」として扱います。
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>材料</th>
+          <th>単位</th>
+          <th>現在庫</th>
+          <th>棚卸数量（counted）</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+          <tr>
+            <td>{{ r.name }}</td>
+            <td>{{ r.unit_base }}</td>
+            <td>{{ "%.2f"|format(r.current_qty) }}</td>
+            <td>
+              <input
+                type="number"
+                name="counted_{{ r.item_id }}"
+                min="0"
+                step="{{ '1' if r.unit_base=='pcs' else '0.01' }}"
+                value="{{ ('%.0f'|format(r.counted_default)) if r.unit_base=='pcs' else ('%.2f'|format(r.counted_default)) }}"
+                style="width:140px;"
+              >
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="actions" style="margin-top:12px;">
+      <button type="submit" class="btn">棚卸を登録して差分を反映（ADJUST）</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

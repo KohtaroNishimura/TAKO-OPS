@@ -39,10 +39,13 @@
       <a href="{{ url_for('purchase_new_form') }}">入庫登録</a>
       <a href="{{ url_for('inventory_list') }}">在庫一覧</a>
       <a href="{{ url_for('stocktakes_list') }}">棚卸一覧</a>
-      <a href="{{ url_for('stocktake_new_form') }}">月次棚卸</a>
+      <a href="{{ url_for('stocktake_monthly_new') }}">月次棚卸</a>
       <a href="{{ url_for('transfers_list') }}">移動一覧</a>
       <a href="{{ url_for('transfer_new_form') }}">移動登録</a>
       <a href="{{ url_for('shopping_list') }}">買い物リスト</a>
+      <a href="{{ url_for('monthly_food_cost') }}">月次原価率</a>
+      <a href="{{ url_for('recipe_batch_edit') }}">レシピ設定</a>
+      <a href="{{ url_for('daily_reports_list') }}">日報</a>
     </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
