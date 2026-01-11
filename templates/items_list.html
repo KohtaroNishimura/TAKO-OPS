@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>材料一覧</h2>
+    <p class="muted">今は「材料の登録・編集」まで。のちほど仕入れ・棚卸・在庫計算に繋げます。</p>
+
+    <div class="actions">
+      <a class="btn" href="{{ url_for('item_new_form') }}">＋ 新規登録</a>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>材料名</th>
+          <th>単位</th>
+          <th>発注目安</th>
+          <th>参考価格</th>
+          <th>原価区分</th>
+          <th>固定（本部指定）</th>
+          <th>仕入れ先</th>
+          <th>有効</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for i in items %}
+          <tr>
+            <td>{{ i["item_id"] }}</td>
+            <td>{{ i["name"] }}</td>
+            <td>{{ i["unit_base"] }}</td>
+            <td>{{ "%.2f"|format(i["reorder_point"]) }}</td>
+            <td>{{ "%.0f"|format(i["ref_unit_price"]) }}</td>
+            <td>{{ "食材" if i["cost_group"]=="FOOD" else "消耗品" }}</td>
+            <td>{{ "✓" if i["is_fixed"] else "" }}</td>
+            <td>{{ i["supplier_name"] or "" }}</td>
+            <td>{{ "◯" if i["is_active"] else "" }}</td>
+            <td style="white-space: nowrap;">
+              <a class="button-link" href="{{ url_for('item_edit_form', item_id=i['item_id']) }}">編集</a>
+
+              <form method="post"
+                    action="{{ url_for('item_delete', item_id=i['item_id']) }}"
+                    style="display:inline;"
+                    onsubmit="return confirm('この材料を削除しますか？（関連データがある場合は無効化になります）');">
+                <button type="submit">削除</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="10">まだ材料がありません。「新規登録」から追加してください。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

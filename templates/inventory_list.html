@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>在庫一覧（残量）</h2>
+    <p class="muted">
+      残量は inventory_tx の合計（+入庫 / -出庫）です。<br>
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>材料</th>
+          <th>単位</th>
+          <th>合計</th>
+          <th>発注目安</th>
+          <th>参考価格</th>
+          <th>仕入れ先</th>
+          <th>固定</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+          {% set low = (r["qty_total"] <= r["reorder_point"]) %}
+          <tr style="{{ 'background:#fff7f7;' if low else '' }}">
+            <td>
+              {{ r["name"] }}
+              {% if low %}
+                <span class="muted">（要発注）</span>
+              {% endif %}
+            </td>
+            <td>{{ r["unit_base"] }}</td>
+            <td><b>{{ "%.2f"|format(r["qty_total"]) }}</b></td>
+            <td>{{ "%.2f"|format(r["reorder_point"]) }}</td>
+            <td>{{ "%.0f"|format(r["ref_unit_price"] or 0) }}</td>
+            <td>{{ r["supplier_name"] or "" }}</td>
+            <td>{{ "✓" if r["is_fixed"] else "" }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7">在庫データがありません。まず「入庫登録」を行ってください。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="actions">
+      <a class="btn" href="{{ url_for('purchase_new_form') }}">＋ 入庫登録</a>
+    </div>
+  </div>
+{% endblock %}

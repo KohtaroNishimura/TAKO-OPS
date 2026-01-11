@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>材料登録</h2>
+
+    <form method="post" action="{{ url_for('item_create') }}">
+      <label>材料名（必須）</label>
+      <input name="name" placeholder="例：たこ" required>
+
+      <label>単位（必須）</label>
+      <select name="unit_base" required>
+        <option value="">選択してください</option>
+        <option value="g">g</option>
+        <option value="ml">ml</option>
+        <option value="pcs">pcs（個）</option>
+        <option value="kg">kg</option>
+      </select>
+      <div class="muted">内部で管理する単位です（粉はg、油はml、袋はpcsなど）</div>
+
+      <label>原価区分</label>
+      <select name="cost_group">
+        <option value="FOOD">食材原価（38カウント）</option>
+        <option value="SUPPLIES" selected>消耗品</option>
+      </select>
+
+      <div class="row">
+        <div>
+          <label>発注目安（reorder_point）</label>
+          <input name="reorder_point" type="number" step="0.01" min="0" placeholder="例：1000（g）">
+        </div>
+        <div>
+          <label>参考価格（ref_unit_price）</label>
+          <input name="ref_unit_price" type="number" step="1" min="0" placeholder="例：980">
+        </div>
+      </div>
+
+      <label>仕入れ先（任意）</label>
+      <select name="supplier_id">
+        <option value="">未設定</option>
+        {% for s in suppliers %}
+          <option value="{{ s['supplier_id'] }}">{{ s['name'] }}</option>
+        {% endfor %}
+      </select>
+
+      <label>有効</label>
+      <select name="is_active">
+        <option value="1" selected>有効</option>
+        <option value="0">無効</option>
+      </select>
+
+      <label>
+        <input type="checkbox" name="is_fixed" value="1">
+        固定（本部指定の材料）
+      </label>
+      <div class="muted">別商品にすると「品質」が変わる可能性があるので、本部の使用材料で統一して下さい。</div>
+
+      <div class="actions">
+        <button class="btn" type="submit">登録する</button>
+        <a class="btn secondary" href="{{ url_for('items_list') }}">戻る</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

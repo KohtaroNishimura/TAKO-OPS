@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>入庫編集（ID: {{ header["purchase_id"] }}）</h2>
+
+    <form method="post" action="{{ url_for('purchase_update', purchase_id=header['purchase_id']) }}">
+      <label>仕入れ先（任意）</label>
+      <select name="supplier_id">
+        <option value="">未設定</option>
+        {% for s in suppliers %}
+          <option value="{{ s['supplier_id'] }}"
+            {{ "selected" if header["supplier_id"] == s["supplier_id"] else "" }}>
+            {{ s['name'] }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <div>
+        <label>仕入れ日時（任意）</label>
+        <input type="datetime-local" name="purchased_at" value="{{ purchased_at_local }}">
+        <div class="muted">空なら元の日時を使います</div>
+      </div>
+
+      <label>メモ（任意）</label>
+      <input name="note" value="{{ header['note'] or '' }}">
+
+      <hr style="margin: 16px 0;">
+
+      <h3>明細（最大10行）</h3>
+      <p class="muted">数量(qty)の単位は材料の unit_base に合わせてください（g / ml / pcs など）</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:45%;">材料</th>
+            <th style="width:20%;">数量(qty)</th>
+            <th style="width:20%;">単価(任意)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in line_rows %}
+            <tr>
+              <td>
+                <select name="item_id">
+                  <option value="">選択してください</option>
+                  {% for i in items %}
+                    <option value="{{ i['item_id'] }}"
+                      {{ "selected" if row["item_id"] == i["item_id"] else "" }}>
+                      {{ i['name'] }}（{{ i['unit_base'] }}）
+                    </option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td><input name="qty" type="number" step="1" min="0" value="{{ row['qty'] }}"></td>
+              <td><input name="unit_price" type="number" step="1" min="0" value="{{ row['unit_price'] if row['unit_price'] is not none else '' }}"></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="actions">
+        <button class="btn" type="submit">更新する</button>
+        <a class="btn secondary" href="{{ url_for('purchase_detail', purchase_id=header['purchase_id']) }}">戻る</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

@@ -3,31 +3,52 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}たこ焼き在庫管理{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <title>たこ焼き 在庫管理</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; margin: 24px; }
+    a { text-decoration: none; }
+    .nav a { margin-right: 12px; }
+    .container { max-width: 980px; margin: 0 auto; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin-top: 16px; }
+    .flash { padding: 10px 12px; border-radius: 10px; margin: 10px 0; }
+    .flash.success { background: #e8fff0; border: 1px solid #bde5c9; }
+    .flash.error { background: #ffecec; border: 1px solid #f3b3b3; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #eee; padding: 10px 8px; text-align: left; }
+    th { background: #fafafa; }
+    .muted { color: #666; font-size: 12px; }
+    label { display:block; margin-top: 10px; font-weight: 600; }
+    input, select, textarea { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ddd; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .btn { display:inline-block; padding: 10px 14px; border-radius: 10px; border: 1px solid #333; background:#333; color:#fff; }
+    .btn.secondary { background:#fff; color:#333; }
+    .actions { margin-top: 14px; display:flex; gap: 10px; align-items:center; }
+    button, .button-link { padding: 8px 10px; border-radius: 10px; border: 1px solid #ddd; background: #fff; cursor: pointer; display: inline-flex; align-items: center; font: inherit; }
+    button:hover, .button-link:hover { background: #f6f6f6; }
+    .button-link { color: #333; text-decoration: none; }
+  </style>
 </head>
 <body>
-  <header class="header">
-    <div class="container header__inner">
-      <a class="brand" href="{{ url_for('products_index') }}">たこ焼き在庫管理</a>
-      <nav class="nav">
-        <a href="{{ url_for('products_index') }}">商品</a>
-      </nav>
+  <div class="container">
+    <div class="nav">
+      <a href="{{ url_for('items_list') }}">材料一覧</a>
+      <a href="{{ url_for('item_new_form') }}">材料登録</a>
+      <a href="{{ url_for('suppliers_list') }}">仕入れ先一覧</a>
+      <a href="{{ url_for('supplier_new_form') }}">仕入れ先登録</a>
+      <a href="{{ url_for('purchases_list') }}">入庫一覧</a>
+      <a href="{{ url_for('purchase_new_form') }}">入庫登録</a>
+      <a href="{{ url_for('inventory_list') }}">在庫一覧</a>
     </div>
-  </header>
 
-  <main class="container">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <div class="flash-list">
-          {% for category, message in messages %}
-            <div class="flash flash--{{ category }}">{{ message }}</div>
-          {% endfor %}
-        </div>
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
       {% endif %}
     {% endwith %}
 
     {% block content %}{% endblock %}
-  </main>
+  </div>
 </body>
 </html>

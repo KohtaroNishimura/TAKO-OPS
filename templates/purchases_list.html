@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>入庫（仕入れ）一覧</h2>
+
+    <div class="actions">
+      <a class="btn" href="{{ url_for('purchase_new_form') }}">＋ 入庫登録</a>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>日時</th>
+          <th>仕入れ先</th>
+          <th>合計金額</th>
+          <th>メモ</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in purchases %}
+          <tr>
+            <td><a href="{{ url_for('purchase_detail', purchase_id=p['purchase_id']) }}">{{ p["purchase_id"] }}</a></td>
+            <td>{{ p["purchased_at"] }}</td>
+            <td>{{ p["supplier_name"] or "" }}</td>
+            <td>{{ "%.0f"|format(p["total_amount"] or 0) }}</td>
+            <td>{{ p["note"] or "" }}</td>
+            <td style="white-space: nowrap;">
+              <a class="button-link" href="{{ url_for('purchase_edit_form', purchase_id=p['purchase_id']) }}">編集</a>
+
+              <form method="post"
+                    action="{{ url_for('purchase_delete', purchase_id=p['purchase_id']) }}"
+                    style="display:inline;"
+                    onsubmit="return confirm('この入庫を削除しますか？');">
+                <button type="submit">削除</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6">まだ入庫がありません。「入庫登録」から追加してください。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

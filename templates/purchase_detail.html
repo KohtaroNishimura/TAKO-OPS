@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>入庫詳細（ID: {{ header["purchase_id"] }}）</h2>
+
+    <p>
+      <b>日時：</b>{{ header["purchased_at"] }}<br>
+      <b>仕入れ先：</b>{{ header["supplier_name"] or "" }}<br>
+      <b>合計金額：</b>{{ "%.0f"|format(header["total_amount"] or 0) }}<br>
+      <b>メモ：</b>{{ header["note"] or "" }}
+    </p>
+
+    <h3>明細</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>材料</th>
+          <th>数量</th>
+          <th>単位</th>
+          <th>単価</th>
+          <th>金額</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in lines %}
+          <tr>
+            <td>{{ l["item_name"] }}</td>
+            <td>{{ l["qty"] }}</td>
+            <td>{{ l["unit_base"] }}</td>
+            <td>{{ l["unit_price"] if l["unit_price"] is not none else "" }}</td>
+            <td>{{ l["line_amount"] if l["line_amount"] is not none else "" }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5">明細がありません。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="actions">
+      <a class="btn secondary" href="{{ url_for('purchases_list') }}">一覧へ</a>
+      <a class="btn secondary" href="{{ url_for('purchase_edit_form', purchase_id=header['purchase_id']) }}">編集</a>
+      <form method="post"
+            action="{{ url_for('purchase_delete', purchase_id=header['purchase_id']) }}"
+            style="display:inline;"
+            onsubmit="return confirm('この入庫を削除しますか？');">
+        <button type="submit">削除</button>
+      </form>
+      <a class="btn" href="{{ url_for('purchase_new_form') }}">＋ 追加登録</a>
+    </div>
+  </div>
+{% endblock %}

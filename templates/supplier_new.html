@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>仕入れ先登録</h2>
+
+    <form method="post" action="{{ url_for('supplier_create') }}">
+      <label>仕入れ先名（必須）</label>
+      <input name="name" placeholder="例：Aプライス" required>
+
+      <label>電話（任意）</label>
+      <input name="phone" placeholder="例：090-xxxx-xxxx">
+
+      <label>メモ（任意）</label>
+      <textarea name="note" rows="4" placeholder="例：毎週火曜が安い、担当者名など"></textarea>
+
+      <div class="actions">
+        <button class="btn" type="submit">登録する</button>
+        <a class="btn secondary" href="{{ url_for('suppliers_list') }}">戻る</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

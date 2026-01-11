@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>仕入れ先一覧</h2>
+
+    <div class="actions">
+      <a class="btn" href="{{ url_for('supplier_new_form') }}">＋ 新規登録</a>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>仕入れ先名</th>
+          <th>電話</th>
+          <th>メモ</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in suppliers %}
+          <tr>
+            <td>{{ s["supplier_id"] }}</td>
+            <td>{{ s["name"] }}</td>
+            <td>{{ s["phone"] or "" }}</td>
+            <td>{{ s["note"] or "" }}</td>
+            <td style="white-space: nowrap;">
+              <a class="button-link" href="{{ url_for('supplier_edit_form', supplier_id=s['supplier_id']) }}">編集</a>
+
+              <form method="post"
+                    action="{{ url_for('supplier_delete', supplier_id=s['supplier_id']) }}"
+                    style="display:inline;"
+                    onsubmit="return confirm('この仕入れ先を削除しますか？');">
+                <button type="submit">削除</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5">まだ仕入れ先がありません。「新規登録」から追加してください。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

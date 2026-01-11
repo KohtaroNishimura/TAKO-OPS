@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>仕入れ先編集（ID: {{ supplier["supplier_id"] }}）</h2>
+
+    <form method="post" action="{{ url_for('supplier_update', supplier_id=supplier['supplier_id']) }}">
+      <label>仕入れ先名（必須）</label>
+      <input name="name" value="{{ supplier['name'] }}" required>
+
+      <label>電話（任意）</label>
+      <input name="phone" value="{{ supplier['phone'] or '' }}">
+
+      <label>メモ（任意）</label>
+      <textarea name="note" rows="4">{{ supplier['note'] or '' }}</textarea>
+
+      <div class="actions">
+        <button class="btn" type="submit">更新する</button>
+        <a class="btn secondary" href="{{ url_for('suppliers_list') }}">戻る</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}
