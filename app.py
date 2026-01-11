@@ -74,8 +74,8 @@ def fetch_item(item_id: int) -> sqlite3.Row | None:
 # Routes
 # -----------------------------
 @app.get("/")
-def index():
-    return redirect(url_for("items_list"))
+def home():
+    return render_template("home.html")
 
 
 @app.get("/items")
