@@ -1,36 +1,18 @@
 from __future__ import annotations
 
-import os
 import sqlite3
 from itertools import groupby
 import math
 from datetime import date, datetime
-from flask import Flask, g, redirect, render_template, request, url_for, flash, abort
+from flask import Flask, redirect, render_template, request, url_for, flash, abort
 
-APP_DIR = os.path.abspath(os.path.dirname(__file__))
-DB_PATH = os.path.join(APP_DIR, "takoyaki_inventory.db")
+from db import close_db, commit_and_sync, get_db
 
 app = Flask(__name__)
 app.secret_key = "dev-secret-key-change-me"  # flash用（あとで環境変数にするのが理想）
 
 
-# -----------------------------
-# DB helpers
-# -----------------------------
-def get_db() -> sqlite3.Connection:
-    if "db" not in g:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON;")
-        g.db = conn
-    return g.db  # type: ignore[return-value]
-
-
-@app.teardown_appcontext
-def close_db(exception: Exception | None) -> None:
-    db = g.pop("db", None)
-    if db is not None:
-        db.close()
+app.teardown_appcontext(close_db)
 
 
 def _to_float(value: str, default: float = 0.0) -> float:
@@ -151,7 +133,7 @@ def item_create():
             """,
             (supplier_id, name, unit_base, reorder_point, ref_unit_price, is_fixed, cost_group, is_active),
         )
-        db.commit()
+        commit_and_sync()
     except sqlite3.IntegrityError as e:
         db.rollback()
         flash(f"登録に失敗しました（整合性エラー）: {e}", "error")
@@ -226,7 +208,7 @@ def supplier_create():
             """,
             (name, phone, note),
         )
-        db.commit()
+        commit_and_sync()
     except sqlite3.IntegrityError as e:
         db.rollback()
         flash(f"登録に失敗しました（整合性エラー）: {e}", "error")
@@ -277,7 +259,7 @@ def supplier_update(supplier_id: int):
             """,
             (name, phone, note, supplier_id),
         )
-        db.commit()
+        commit_and_sync()
     except sqlite3.IntegrityError as e:
         db.rollback()
         flash(f"更新に失敗しました（整合性エラー）: {e}", "error")
@@ -304,7 +286,7 @@ def supplier_delete(supplier_id: int):
 
     try:
         db.execute("DELETE FROM suppliers WHERE supplier_id = ?", (supplier_id,))
-        db.commit()
+        commit_and_sync()
         flash(f"仕入れ先を削除しました: {supplier['name']}", "success")
     except sqlite3.IntegrityError as e:
         db.rollback()
@@ -541,7 +523,7 @@ def purchase_create():
             (total, purchase_id),
         )
 
-        db.commit()
+        commit_and_sync()
     except Exception as e:
         db.rollback()
         flash(f"入庫登録に失敗しました: {e}", "error")
@@ -897,7 +879,7 @@ def purchase_update(purchase_id: int):
             (total, purchase_id),
         )
 
-        db.commit()
+        commit_and_sync()
     except Exception as e:
         db.rollback()
         flash(f"更新に失敗しました: {e}", "error")
@@ -925,7 +907,7 @@ def purchase_delete(purchase_id: int):
             (purchase_id,),
         )
         db.execute("DELETE FROM purchases WHERE purchase_id = ?", (purchase_id,))
-        db.commit()
+        commit_and_sync()
     except Exception as e:
         db.rollback()
         flash(f"削除に失敗しました: {e}", "error")
@@ -1668,7 +1650,7 @@ def stocktake_create():
                 (taken_at, item_id, delta, location, stocktake_id, note),
             )
 
-        db.commit()
+        commit_and_sync()
     except Exception as e:
         db.rollback()
         flash(f"月次棚卸の登録に失敗しました: {e}", "error")
@@ -2100,7 +2082,7 @@ def transfer_create():
                 (happened_at, item_id, qty, to_location, transfer_id, note),
             )
 
-        db.commit()
+        commit_and_sync()
     except Exception as e:
         db.rollback()
         flash(f"移動の登録に失敗しました: {e}", "error")
@@ -2617,7 +2599,7 @@ def item_update(item_id: int):
             """,
             (supplier_id, name, unit_base, reorder_point, ref_unit_price, is_fixed, cost_group, is_active, item_id),
         )
-        db.commit()
+        commit_and_sync()
     except sqlite3.IntegrityError as e:
         db.rollback()
         flash(f"更新に失敗しました（整合性エラー）: {e}", "error")
@@ -2645,13 +2627,13 @@ def item_delete(item_id: int):
     try:
         # まず物理削除を試す
         db.execute("DELETE FROM items WHERE item_id = ?", (item_id,))
-        db.commit()
+        commit_and_sync()
         flash(f"材料を削除しました: {item['name']}", "success")
     except sqlite3.IntegrityError:
         # 関連データがあると削除できないので、無効化へ
         db.rollback()
         db.execute("UPDATE items SET is_active = 0 WHERE item_id = ?", (item_id,))
-        db.commit()
+        commit_and_sync()
         flash(
             f"関連データがあるため物理削除できませんでした。無効化（is_active=0）しました: {item['name']}",
             "error",
