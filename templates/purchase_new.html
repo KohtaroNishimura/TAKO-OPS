@@ -16,9 +16,10 @@
       </select>
 
       <div>
-        <label>仕入れ日時（任意）</label>
-        <input type="datetime-local" name="purchased_at">
-        <div class="muted">空なら「登録した時刻」を使います</div>
+        <label>仕入れ日（任意）</label>
+        <input type="date" name="purchased_date"
+               value="{{ default_purchased_date if default_purchased_date is defined else '' }}">
+        <div class="muted">空なら今日</div>
       </div>
 
       <label>場所</label>

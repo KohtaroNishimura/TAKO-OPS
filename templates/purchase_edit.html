@@ -21,6 +21,12 @@
         <div class="muted">空なら元の日時を使います</div>
       </div>
 
+      <label>場所</label>
+      <select name="location">
+        <option value="STORE" {{ "selected" if default_location is defined and default_location=="STORE" else "" }}>STORE（店舗）</option>
+        <option value="WAREHOUSE" {{ "selected" if default_location is defined and default_location=="WAREHOUSE" else "" }}>WAREHOUSE（倉庫）</option>
+      </select>
+
       <label>メモ（任意）</label>
       <input name="note" value="{{ header['note'] or '' }}">
 

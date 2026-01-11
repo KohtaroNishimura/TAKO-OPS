@@ -6,28 +6,29 @@
     <form method="post" action="{{ url_for('transfer_create') }}">
       <div class="row">
         <div>
-          <label>移動日時（任意）</label>
-          <input type="datetime-local" name="moved_at">
-          <div class="muted">空なら登録時刻</div>
+          <label>移動日（任意）</label>
+          <input type="date" name="moved_date"
+            value="{{ default_moved_date if default_moved_date is defined else '' }}">
+          <div class="muted">空なら今日</div>
         </div>
         <div>
           <label>移動元</label>
           <select name="from_location">
-            <option value="WAREHOUSE" selected>WAREHOUSE（倉庫/自宅）</option>
-            <option value="STORE">STORE（店舗/トレーラー）</option>
+            <option value="WAREHOUSE" {{ "selected" if default_from_location is defined and default_from_location=="WAREHOUSE" else "" }}>WAREHOUSE（倉庫/自宅）</option>
+            <option value="STORE" {{ "selected" if default_from_location is defined and default_from_location=="STORE" else "" }}>STORE（店舗/トレーラー）</option>
           </select>
         </div>
         <div>
           <label>移動先</label>
           <select name="to_location">
-            <option value="STORE" selected>STORE（店舗/トレーラー）</option>
-            <option value="WAREHOUSE">WAREHOUSE（倉庫/自宅）</option>
+            <option value="STORE" {{ "selected" if default_to_location is defined and default_to_location=="STORE" else "" }}>STORE（店舗/トレーラー）</option>
+            <option value="WAREHOUSE" {{ "selected" if default_to_location is defined and default_to_location=="WAREHOUSE" else "" }}>WAREHOUSE（倉庫/自宅）</option>
           </select>
         </div>
       </div>
 
       <label>メモ（任意）</label>
-      <input name="note" placeholder="例：営業前にトレーラーへ補充">
+      <input name="note" value="{{ default_note if default_note is defined else '' }}" placeholder="例：営業前にトレーラーへ補充">
 
       <hr style="margin: 16px 0;">
 
@@ -39,19 +40,26 @@
             <th style="width:40%;">数量</th>
           </tr>
         </thead>
+        {% set prefill = prefill_lines if prefill_lines is defined else [] %}
         <tbody>
-          {% for _ in range(10) %}
+          {% for idx in range(10) %}
+            {% set pl = prefill[idx] if idx < (prefill|length) else None %}
             <tr>
               <td>
                 <select name="item_id">
                   <option value="">選択してください</option>
                   {% for i in items %}
-                    <option value="{{ i['item_id'] }}">{{ i['name'] }}（{{ i['unit_base'] }}）</option>
+                    <option value="{{ i['item_id'] }}"
+                      {{ "selected" if pl and pl["item_id"] == i["item_id"] else "" }}>
+                      {{ i['name'] }}（{{ i['unit_base'] }}）
+                    </option>
                   {% endfor %}
                 </select>
               </td>
               <td>
-                <input name="qty" type="number" step="0.01" min="0" placeholder="例：1">
+                <input name="qty" type="number" step="0.01" min="0"
+                       value="{{ '%.2f'|format(pl['qty']) if pl else '' }}"
+                       placeholder="例：1">
               </td>
             </tr>
           {% endfor %}

@@ -334,15 +334,27 @@ def purchases_list():
         SELECT
           p.purchase_id,
           p.purchased_at,
-          p.total_amount,
+          COALESCE(s.name,'（未設定）') AS supplier_name,
           p.note,
-          s.name AS supplier_name
+          p.total_amount,
+          COALESCE(itx.location, 'STORE') AS location
         FROM purchases p
         LEFT JOIN suppliers s ON s.supplier_id = p.supplier_id
+        LEFT JOIN inventory_tx itx
+          ON itx.ref_type = 'PURCHASE' AND itx.ref_id = p.purchase_id
         ORDER BY p.purchased_at DESC, p.purchase_id DESC
         """
     ).fetchall()
-    return render_template("purchases_list.html", purchases=rows)
+    created = request.args.get("created")
+    try:
+        created_purchase_id = int(created) if created else None
+    except ValueError:
+        created_purchase_id = None
+    return render_template(
+        "purchases_list.html",
+        purchases=rows,
+        created_purchase_id=created_purchase_id,
+    )
 
 
 @app.get("/purchases/new")
@@ -359,9 +371,12 @@ def purchase_create():
     supplier_id_raw = (request.form.get("supplier_id") or "").strip()
     supplier_id = int(supplier_id_raw) if supplier_id_raw else None
 
-    purchased_at = (request.form.get("purchased_at") or "").strip()
-    # HTMLのdatetime-localが空の時はDB側のDEFAULTに任せたいので None にする
-    purchased_at = purchased_at if purchased_at else None
+    purchased_date = (request.form.get("purchased_date") or "").strip()
+    if purchased_date:
+        purchased_at = f"{purchased_date} 09:00:00"
+    else:
+        # 空ならDB側のDEFAULTに任せる
+        purchased_at = None
 
     note = (request.form.get("note") or "").strip() or None
 
@@ -515,7 +530,7 @@ def purchase_create():
         return redirect(url_for("purchase_new_form"))
 
     flash("入庫（仕入れ）を登録しました。", "success")
-    return redirect(url_for("purchase_detail", purchase_id=purchase_id))
+    return redirect(url_for("purchases_list", created=purchase_id))
 
 
 @app.post("/purchases/new-from-list")
@@ -659,6 +674,19 @@ def purchase_edit_form(purchase_id: int):
         (purchase_id,),
     ).fetchall()
 
+    tx_loc = db.execute(
+        """
+        SELECT location
+        FROM inventory_tx
+        WHERE ref_type = 'PURCHASE' AND ref_id = ?
+        LIMIT 1
+        """,
+        (purchase_id,),
+    ).fetchone()
+    default_location = tx_loc["location"] if tx_loc else "STORE"
+    if default_location not in ("STORE", "WAREHOUSE"):
+        default_location = "STORE"
+
     line_rows: list[dict[str, object]] = []
     for l in lines:
         line_rows.append(
@@ -685,6 +713,7 @@ def purchase_edit_form(purchase_id: int):
         suppliers=suppliers,
         items=items,
         purchased_at_local=purchased_at_local,
+        default_location=default_location,
     )
 
 
@@ -704,6 +733,10 @@ def purchase_update(purchase_id: int):
 
     purchased_at = (request.form.get("purchased_at") or "").strip()
     purchased_at_db = purchased_at.replace("T", " ") if purchased_at else header["purchased_at"]
+
+    location = (request.form.get("location") or "STORE").strip()
+    if location not in ("STORE", "WAREHOUSE"):
+        location = "STORE"
 
     note = (request.form.get("note") or "").strip() or None
 
@@ -820,13 +853,14 @@ def purchase_update(purchase_id: int):
                 )
                 VALUES (
                   COALESCE(?, datetime('now')),
-                  ?, ?, 'PURCHASE', 'STORE', 'PURCHASE', ?, ?
+                  ?, ?, 'PURCHASE', ?, 'PURCHASE', ?, ?
                 )
                 """,
                 (
                     purchased_at_db,
                     item_id,
                     qty,
+                    location,
                     purchase_id,
                     note,
                 ),
@@ -1216,8 +1250,11 @@ def transfer_new_form():
 def transfer_create():
     db = get_db()
 
-    moved_at_raw = (request.form.get("moved_at") or "").strip()
-    moved_at = moved_at_raw.replace("T", " ") if moved_at_raw else None
+    moved_date = (request.form.get("moved_date") or "").strip()
+    if moved_date:
+        moved_at = f"{moved_date} 09:00:00"
+    else:
+        moved_at = None
 
     from_location = (request.form.get("from_location") or "WAREHOUSE").strip()
     to_location = (request.form.get("to_location") or "STORE").strip()
@@ -1375,6 +1412,87 @@ def transfer_detail(transfer_id: int):
     ).fetchall()
 
     return render_template("transfer_detail.html", header=header, lines=lines)
+
+
+@app.get("/transfers/new-from-purchase/<int:purchase_id>")
+def transfer_new_from_purchase(purchase_id: int):
+    db = get_db()
+
+    # 仕入れヘッダ
+    p = db.execute(
+        """
+        SELECT purchase_id, supplier_id, purchased_at, note
+        FROM purchases
+        WHERE purchase_id = ?
+        """,
+        (purchase_id,),
+    ).fetchone()
+    if p is None:
+        abort(404)
+
+    # 仕入れ明細
+    lines = db.execute(
+        """
+        SELECT pl.item_id, pl.qty, i.name, i.unit_base
+        FROM purchase_lines pl
+        JOIN items i ON i.item_id = pl.item_id
+        WHERE pl.purchase_id = ?
+        ORDER BY pl.purchase_line_id ASC
+        """,
+        (purchase_id,),
+    ).fetchall()
+
+    if not lines:
+        flash("この仕入れには明細がありません。", "error")
+        return redirect(url_for("purchases_list"))
+
+    # この仕入れがどこに入庫されたか（inventory_txから推定）
+    tx_loc = db.execute(
+        """
+        SELECT location
+        FROM inventory_tx
+        WHERE ref_type = 'PURCHASE' AND ref_id = ?
+        LIMIT 1
+        """,
+        (purchase_id,),
+    ).fetchone()
+
+    from_location = (tx_loc["location"] if tx_loc else "WAREHOUSE")
+    if from_location not in ("STORE", "WAREHOUSE"):
+        from_location = "WAREHOUSE"
+
+    # 移動先（倉庫→店舗が基本）
+    to_location = "STORE" if from_location == "WAREHOUSE" else "WAREHOUSE"
+
+    # transfer_new.html が10行固定なら最大10件まで
+    prefill_lines = []
+    for r in lines[:10]:
+        prefill_lines.append(
+            {
+                "item_id": r["item_id"],
+                "qty": float(r["qty"] or 0),
+            }
+        )
+
+    if len(lines) > 10:
+        flash("明細が10件を超えています。移動フォームには先頭10件のみ反映しました。", "error")
+
+    suppliers = fetch_suppliers()
+    items = fetch_active_items()
+
+    default_note = f"仕入れID {purchase_id} から店舗へ補充"
+    default_moved_at = p["purchased_at"]  # 仕入れ日時をそのまま移動日時に
+
+    return render_template(
+        "transfer_new.html",
+        suppliers=suppliers,
+        items=items,
+        prefill_lines=prefill_lines,
+        default_from_location=from_location,
+        default_to_location=to_location,
+        default_moved_at=default_moved_at,
+        default_note=default_note,
+    )
 
 
 # -----------------------------
