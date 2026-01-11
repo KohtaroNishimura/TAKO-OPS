@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>棚卸詳細（ID: {{ header["stocktake_id"] }}）</h2>
+
+    <p>
+      <b>日時：</b>{{ header["taken_at"] }}<br>
+      <b>区分：</b>{{ header["scope"] }}<br>
+      <b>場所：</b>{{ header["location"] }}<br>
+      <b>メモ：</b>{{ header["note"] or "" }}
+    </p>
+
+    <h3>棚卸入力（実測）</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>材料</th>
+          <th>単位</th>
+          <th>区分</th>
+          <th>棚卸数量</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in lines %}
+          <tr>
+            <td>{{ l["item_name"] }}</td>
+            <td>{{ l["unit_base"] }}</td>
+            <td>{{ l["cost_group"] }}</td>
+            <td>{{ "%.2f"|format(l["counted_qty"]) }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4">入力がありません。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h3>差分反映（ADJUST）</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>材料</th>
+          <th>単位</th>
+          <th>調整量（+増 / -減）</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in adjusts %}
+          <tr>
+            <td>{{ a["item_name"] }}</td>
+            <td>{{ a["unit_base"] }}</td>
+            <td><b>{{ "%.2f"|format(a["qty_delta"]) }}</b></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3">差分はありませんでした（調整なし）。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="actions">
+      <a class="btn secondary" href="{{ url_for('stocktakes_list') }}">一覧へ</a>
+      <a class="btn" href="{{ url_for('stocktake_new_form') }}">＋ 次の棚卸</a>
+    </div>
+  </div>
+{% endblock %}

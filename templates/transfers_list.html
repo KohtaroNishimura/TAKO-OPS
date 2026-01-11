@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>移動一覧（倉庫⇄店舗）</h2>
+
+    <div class="actions">
+      <a class="btn" href="{{ url_for('transfer_new_form') }}">＋ 移動登録</a>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>日時</th>
+          <th>移動</th>
+          <th>行数</th>
+          <th>メモ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in transfers %}
+          <tr>
+            <td><a href="{{ url_for('transfer_detail', transfer_id=t['transfer_id']) }}">{{ t["transfer_id"] }}</a></td>
+            <td>{{ t["moved_at"] }}</td>
+            <td>{{ t["from_location"] }} → {{ t["to_location"] }}</td>
+            <td>{{ t["line_count"] }}</td>
+            <td>{{ t["note"] or "" }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5">まだ移動がありません。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

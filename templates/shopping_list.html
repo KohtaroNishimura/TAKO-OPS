@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>買い物リスト（発注目安以下）</h2>
+
+    <form method="get" action="{{ url_for('shopping_list') }}" style="margin-bottom:12px;">
+      <label>基準の場所</label>
+      <select name="location">
+        <option value="STORE" {{ "selected" if location=="STORE" else "" }}>STORE（店舗/トレーラー）</option>
+        <option value="WAREHOUSE" {{ "selected" if location=="WAREHOUSE" else "" }}>WAREHOUSE（倉庫/自宅）</option>
+        <option value="TOTAL" {{ "selected" if location=="TOTAL" else "" }}>TOTAL（倉庫+店舗 合算）</option>
+      </select>
+
+      <label style="display:inline-block; margin-left:12px;">
+        <input type="checkbox" name="include_food" value="1" {{ "checked" if include_food else "" }}>
+        食材（FOOD）も含める
+      </label>
+
+      <label style="display:inline-block; margin-left:12px;">
+        <input type="checkbox" name="exclude_fixed" value="1" {{ "checked" if exclude_fixed else "" }}>
+        固定（is_fixed）を除外
+      </label>
+
+      <button type="submit" style="margin-left:12px;">更新</button>
+    </form>
+
+    {% if grouped|length == 0 %}
+      <p>発注目安以下の材料はありません。</p>
+    {% endif %}
+
+    {% for g in grouped %}
+      <hr style="margin: 16px 0;">
+      <h3>{{ g.supplier_name }}</h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>材料</th>
+            <th>区分</th>
+            <th>現在庫</th>
+            <th>発注目安</th>
+            <th>推奨発注量</th>
+            <th>単位</th>
+            <th>参考単価</th>
+            <th>固定</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in g["items"] %}
+            <tr>
+              <td>{{ i.name }}</td>
+              <td>{{ "食材" if i.cost_group=="FOOD" else "消耗品" }}</td>
+              <td>{{ "%.2f"|format(i.qty) }}</td>
+              <td>{{ "%.2f"|format(i.reorder_point) }}</td>
+              <td><b>{{ "%.2f"|format(i.order_qty) }}</b></td>
+              <td>{{ i.unit_base }}</td>
+              <td>{{ "%.0f"|format(i.ref_unit_price or 0) }}</td>
+              <td>{{ "✓" if i.is_fixed else "" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endfor %}
+  </div>
+{% endblock %}

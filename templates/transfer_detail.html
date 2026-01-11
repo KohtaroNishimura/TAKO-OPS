@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>移動詳細（ID: {{ header["transfer_id"] }}）</h2>
+
+    <p>
+      <b>日時：</b>{{ header["moved_at"] }}<br>
+      <b>移動：</b>{{ header["from_location"] }} → {{ header["to_location"] }}<br>
+      <b>メモ：</b>{{ header["note"] or "" }}
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>材料</th>
+          <th>単位</th>
+          <th>数量</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in lines %}
+          <tr>
+            <td>{{ l["item_name"] }}</td>
+            <td>{{ l["unit_base"] }}</td>
+            <td>{{ "%.2f"|format(l["qty"]) }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3">明細がありません。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="actions">
+      <a class="btn secondary" href="{{ url_for('transfers_list') }}">一覧へ</a>
+      <a class="btn" href="{{ url_for('transfer_new_form') }}">＋ 追加登録</a>
+    </div>
+  </div>
+{% endblock %}

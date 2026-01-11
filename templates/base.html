@@ -38,6 +38,11 @@
       <a href="{{ url_for('purchases_list') }}">入庫一覧</a>
       <a href="{{ url_for('purchase_new_form') }}">入庫登録</a>
       <a href="{{ url_for('inventory_list') }}">在庫一覧</a>
+      <a href="{{ url_for('stocktakes_list') }}">棚卸一覧</a>
+      <a href="{{ url_for('stocktake_new_form') }}">月次棚卸</a>
+      <a href="{{ url_for('transfers_list') }}">移動一覧</a>
+      <a href="{{ url_for('transfer_new_form') }}">移動登録</a>
+      <a href="{{ url_for('shopping_list') }}">買い物リスト</a>
     </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>月次棚卸（入力）</h2>
+    <p class="muted">
+      入力した「実測値」と、在庫履歴（inventory_tx）の理論在庫を比べて差分を自動計算し、ADJUSTで反映します。
+    </p>
+
+    <form method="get" action="{{ url_for('stocktake_new_form') }}" style="margin-bottom:12px;">
+      <label>表示対象</label>
+      <select name="only_food">
+        <option value="1" {{ "selected" if only_food else "" }}>食材原価（FOOD）のみ（38項目）</option>
+        <option value="0" {{ "selected" if not only_food else "" }}>全材料（FOOD + 消耗品）</option>
+      </select>
+
+      <label>場所</label>
+      <select name="location">
+        <option value="WAREHOUSE" {{ "selected" if location=="WAREHOUSE" else "" }}>WAREHOUSE（倉庫）</option>
+        <option value="STORE" {{ "selected" if location=="STORE" else "" }}>STORE（店舗）</option>
+      </select>
+
+      <button type="submit">表示を更新</button>
+    </form>
+
+    <form method="post" action="{{ url_for('stocktake_create') }}">
+      <input type="hidden" name="only_food" value="{{ '1' if only_food else '0' }}">
+      <input type="hidden" name="location" value="{{ location }}">
+
+      <div class="row">
+        <div>
+          <label>棚卸日時（任意）</label>
+          <input type="datetime-local" name="taken_at">
+          <div class="muted">空なら「登録した時刻」になります</div>
+        </div>
+        <div>
+          <label>メモ（任意）</label>
+          <input name="note" placeholder="例：12月末 月次棚卸">
+        </div>
+      </div>
+
+      <hr style="margin: 16px 0;">
+
+      <h3>棚卸数量（実測）</h3>
+      <p class="muted">
+        表示している「理論在庫」は現時点の合計です（入力後、差分をADJUSTします）。
+        未入力の行はスキップされます（今回は数えない扱い）。
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>材料</th>
+            <th>単位</th>
+            <th>理論在庫（参考）</th>
+            <th>棚卸数量（実測）</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in items %}
+            {% set cur = current_map.get(i["item_id"], 0) %}
+            <tr>
+              <td>
+                {{ i["name"] }}
+                <span class="muted">（{{ i["cost_group"] }}）</span>
+                <input type="hidden" name="item_id" value="{{ i['item_id'] }}">
+              </td>
+              <td>{{ i["unit_base"] }}</td>
+              <td>{{ "%.2f"|format(cur) }}</td>
+              <td>
+                <input name="counted_qty" type="number" step="0.01" min="0" placeholder="例：{{ '%.2f'|format(cur) }}">
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="actions">
+        <button class="btn" type="submit"
+          onclick="return confirm('棚卸を登録し、差分をADJUSTで反映します。よろしいですか？');">
+          棚卸を登録して反映
+        </button>
+        <a class="btn secondary" href="{{ url_for('stocktakes_list') }}">戻る</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

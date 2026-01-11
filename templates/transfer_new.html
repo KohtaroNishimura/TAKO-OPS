@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>移動登録（倉庫⇄店舗）</h2>
+
+    <form method="post" action="{{ url_for('transfer_create') }}">
+      <div class="row">
+        <div>
+          <label>移動日時（任意）</label>
+          <input type="datetime-local" name="moved_at">
+          <div class="muted">空なら登録時刻</div>
+        </div>
+        <div>
+          <label>移動元</label>
+          <select name="from_location">
+            <option value="WAREHOUSE" selected>WAREHOUSE（倉庫/自宅）</option>
+            <option value="STORE">STORE（店舗/トレーラー）</option>
+          </select>
+        </div>
+        <div>
+          <label>移動先</label>
+          <select name="to_location">
+            <option value="STORE" selected>STORE（店舗/トレーラー）</option>
+            <option value="WAREHOUSE">WAREHOUSE（倉庫/自宅）</option>
+          </select>
+        </div>
+      </div>
+
+      <label>メモ（任意）</label>
+      <input name="note" placeholder="例：営業前にトレーラーへ補充">
+
+      <hr style="margin: 16px 0;">
+
+      <h3>明細（最大10行）</h3>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:60%;">材料</th>
+            <th style="width:40%;">数量</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for _ in range(10) %}
+            <tr>
+              <td>
+                <select name="item_id">
+                  <option value="">選択してください</option>
+                  {% for i in items %}
+                    <option value="{{ i['item_id'] }}">{{ i['name'] }}（{{ i['unit_base'] }}）</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td>
+                <input name="qty" type="number" step="0.01" min="0" placeholder="例：1">
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="actions">
+        <button class="btn" type="submit"
+          onclick="return confirm('移動を登録し、在庫履歴（TRANSFER）を2地点に反映します。よろしいですか？');">
+          登録する
+        </button>
+        <a class="btn secondary" href="{{ url_for('transfers_list') }}">戻る</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}
