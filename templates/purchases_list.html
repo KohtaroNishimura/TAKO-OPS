@@ -26,7 +26,6 @@
           <th>ID</th>
           <th>日時</th>
           <th>仕入れ先</th>
-          <th>場所</th>
           <th>合計金額</th>
           <th>メモ</th>
           <th></th>
@@ -39,7 +38,6 @@
             <td><a href="{{ url_for('purchase_detail', purchase_id=p['purchase_id']) }}">{{ p["purchase_id"] }}</a></td>
             <td>{{ p["purchased_at"][:10] if p["purchased_at"] else "" }}</td>
             <td>{{ p["supplier_name"] or "" }}</td>
-            <td>{{ p["location"] or "" }}</td>
             <td>{{ "%.0f"|format(p["total_amount"] or 0) }}</td>
             <td>{{ p["note"] or "" }}</td>
             <td class="whitespace-nowrap">

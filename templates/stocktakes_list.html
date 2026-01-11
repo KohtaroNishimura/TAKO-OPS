@@ -15,7 +15,6 @@
           <th>ID</th>
           <th>日時</th>
           <th>区分</th>
-          <th>場所</th>
           <th>行数</th>
           <th>メモ</th>
         </tr>
@@ -26,7 +25,6 @@
             <td><a href="{{ url_for('stocktake_detail', stocktake_id=st['stocktake_id']) }}">{{ st["stocktake_id"] }}</a></td>
             <td>{{ st["taken_at"] }}</td>
             <td>{{ st["scope"] }}</td>
-            <td>{{ st["location"] }}</td>
             <td>{{ st["line_count"] }}</td>
             <td>{{ st["note"] or "" }}</td>
           </tr>

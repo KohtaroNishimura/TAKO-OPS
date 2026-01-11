@@ -7,12 +7,6 @@
       <label>対象月</label>
       <input type="month" name="ym" value="{{ ym }}">
 
-      <label>棚卸場所</label>
-      <select name="location">
-        <option value="WAREHOUSE" {{ "selected" if location=="WAREHOUSE" else "" }}>WAREHOUSE（倉庫/自宅）</option>
-        <option value="STORE" {{ "selected" if location=="STORE" else "" }}>STORE（店舗/トレーラー）</option>
-      </select>
-
       <button type="submit" class="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">表示</button>
     </form>
 
