@@ -201,6 +201,10 @@ def supplier_new_form():
 def supplier_create():
     name = (request.form.get("name") or "").strip()
     phone = (request.form.get("phone") or "").strip() or None
+    location = (request.form.get("location") or "WAREHOUSE").strip()
+    if location not in ("STORE", "WAREHOUSE"):
+        location = "WAREHOUSE"
+
     note = (request.form.get("note") or "").strip() or None
 
     errors: list[str] = []
@@ -340,8 +344,12 @@ def purchases_list():
           COALESCE(itx.location, 'STORE') AS location
         FROM purchases p
         LEFT JOIN suppliers s ON s.supplier_id = p.supplier_id
-        LEFT JOIN inventory_tx itx
-          ON itx.ref_type = 'PURCHASE' AND itx.ref_id = p.purchase_id
+        LEFT JOIN (
+          SELECT ref_id, MIN(location) AS location
+          FROM inventory_tx
+          WHERE ref_type = 'PURCHASE'
+          GROUP BY ref_id
+        ) itx ON itx.ref_id = p.purchase_id
         ORDER BY p.purchased_at DESC, p.purchase_id DESC
         """
     ).fetchall()
@@ -377,6 +385,10 @@ def purchase_create():
     else:
         # 空ならDB側のDEFAULTに任せる
         purchased_at = None
+
+    location = (request.form.get("location") or "WAREHOUSE").strip()
+    if location not in ("STORE", "WAREHOUSE"):
+        location = "WAREHOUSE"
 
     note = (request.form.get("note") or "").strip() or None
 
@@ -421,6 +433,9 @@ def purchase_create():
         if qty <= 0:
             errors.append(f"{idx}行目：数量(qty)は0より大きくしてください。")
             continue
+        if not qty.is_integer():
+            errors.append(f"{idx}行目：数量(qty)は整数で入力してください。")
+            continue
 
         item_row = db.execute(
             "SELECT name, unit_base FROM items WHERE item_id = ?",
@@ -433,16 +448,18 @@ def purchase_create():
             errors.append(f"{idx}行目：{item_row['name']} はpcsなので整数で入力してください。")
             continue
 
-        unit_price: float | None = None
-        if unit_price_raw != "":
-            try:
-                unit_price = float(unit_price_raw)
-                if unit_price < 0:
-                    errors.append(f"{idx}行目：単価(unit_price)は0以上にしてください。")
-                    continue
-            except ValueError:
-                errors.append(f"{idx}行目：単価(unit_price)が数値ではありません。")
+        if unit_price_raw == "":
+            errors.append(f"{idx}行目：単価(unit_price)を入力してください。")
+            continue
+
+        try:
+            unit_price = float(unit_price_raw)
+            if unit_price < 0:
+                errors.append(f"{idx}行目：単価(unit_price)は0以上にしてください。")
                 continue
+        except ValueError:
+            errors.append(f"{idx}行目：単価(unit_price)が数値ではありません。")
+            continue
 
         lines.append((item_id, qty, unit_price))
 
@@ -468,8 +485,7 @@ def purchase_create():
                 (supplier_id, note),
             )
         else:
-            # datetime-local -> "YYYY-MM-DDTHH:MM" なので、SQLiteが扱いやすいように " " に置換
-            purchased_at_db = purchased_at.replace("T", " ")
+            purchased_at_db = purchased_at
             cur = db.execute(
                 """
                 INSERT INTO purchases (supplier_id, purchased_at, note, total_amount)
@@ -505,13 +521,14 @@ def purchase_create():
                 )
                 VALUES (
                   COALESCE(?, datetime('now')),
-                  ?, ?, 'PURCHASE', 'STORE', 'PURCHASE', ?, ?
+                  ?, ?, 'PURCHASE', ?, 'PURCHASE', ?, ?
                 )
                 """,
                 (
-                    purchased_at.replace("T", " ") if purchased_at else None,
+                    purchased_at,
                     item_id,
                     qty,
+                    location,
                     purchase_id,
                     note,
                 ),
@@ -540,9 +557,9 @@ def purchase_new_from_list():
     supplier_id_raw = (request.form.get("supplier_id") or "").strip()
     supplier_id = int(supplier_id_raw) if supplier_id_raw else None
 
-    location = (request.form.get("location") or "STORE").strip()
+    location = (request.form.get("location") or "WAREHOUSE").strip()
     if location not in ("STORE", "WAREHOUSE"):
-        location = "STORE"
+        location = "WAREHOUSE"
 
     # チェックされた材料
     selected_item_ids_raw = request.form.getlist("selected_item_ids")
@@ -700,9 +717,9 @@ def purchase_edit_form(purchase_id: int):
         line_rows.append({"item_id": "", "qty": "", "unit_price": ""})
     line_rows = line_rows[:10]
 
-    purchased_at_local = ""
+    default_purchased_date = ""
     if header["purchased_at"]:
-        purchased_at_local = str(header["purchased_at"]).replace(" ", "T")
+        default_purchased_date = str(header["purchased_at"])[:10]
 
     suppliers = fetch_suppliers()
     items = fetch_active_items()
@@ -712,7 +729,7 @@ def purchase_edit_form(purchase_id: int):
         line_rows=line_rows,
         suppliers=suppliers,
         items=items,
-        purchased_at_local=purchased_at_local,
+        default_purchased_date=default_purchased_date,
         default_location=default_location,
     )
 
@@ -731,8 +748,11 @@ def purchase_update(purchase_id: int):
     supplier_id_raw = (request.form.get("supplier_id") or "").strip()
     supplier_id = int(supplier_id_raw) if supplier_id_raw else None
 
-    purchased_at = (request.form.get("purchased_at") or "").strip()
-    purchased_at_db = purchased_at.replace("T", " ") if purchased_at else header["purchased_at"]
+    purchased_date = (request.form.get("purchased_date") or "").strip()
+    if purchased_date:
+        purchased_at_db = f"{purchased_date} 09:00:00"
+    else:
+        purchased_at_db = header["purchased_at"]
 
     location = (request.form.get("location") or "STORE").strip()
     if location not in ("STORE", "WAREHOUSE"):
@@ -780,6 +800,9 @@ def purchase_update(purchase_id: int):
         if qty <= 0:
             errors.append(f"{idx}行目：数量(qty)は0より大きくしてください。")
             continue
+        if not qty.is_integer():
+            errors.append(f"{idx}行目：数量(qty)は整数で入力してください。")
+            continue
 
         item_row = db.execute(
             "SELECT name, unit_base FROM items WHERE item_id = ?",
@@ -792,16 +815,18 @@ def purchase_update(purchase_id: int):
             errors.append(f"{idx}行目：{item_row['name']} はpcsなので整数で入力してください。")
             continue
 
-        unit_price: float | None = None
-        if unit_price_raw != "":
-            try:
-                unit_price = float(unit_price_raw)
-                if unit_price < 0:
-                    errors.append(f"{idx}行目：単価(unit_price)は0以上にしてください。")
-                    continue
-            except ValueError:
-                errors.append(f"{idx}行目：単価(unit_price)が数値ではありません。")
+        if unit_price_raw == "":
+            errors.append(f"{idx}行目：単価(unit_price)を入力してください。")
+            continue
+
+        try:
+            unit_price = float(unit_price_raw)
+            if unit_price < 0:
+                errors.append(f"{idx}行目：単価(unit_price)は0以上にしてください。")
                 continue
+        except ValueError:
+            errors.append(f"{idx}行目：単価(unit_price)が数値ではありません。")
+            continue
 
         lines.append((item_id, qty, unit_price))
 
@@ -1481,7 +1506,7 @@ def transfer_new_from_purchase(purchase_id: int):
     items = fetch_active_items()
 
     default_note = f"仕入れID {purchase_id} から店舗へ補充"
-    default_moved_at = p["purchased_at"]  # 仕入れ日時をそのまま移動日時に
+    default_moved_date = str(p["purchased_at"])[:10] if p["purchased_at"] else ""
 
     return render_template(
         "transfer_new.html",
@@ -1490,7 +1515,7 @@ def transfer_new_from_purchase(purchase_id: int):
         prefill_lines=prefill_lines,
         default_from_location=from_location,
         default_to_location=to_location,
-        default_moved_at=default_moved_at,
+        default_moved_date=default_moved_date,
         default_note=default_note,
     )
 

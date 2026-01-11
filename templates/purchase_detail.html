@@ -4,7 +4,7 @@
     <h2>入庫詳細（ID: {{ header["purchase_id"] }}）</h2>
 
     <p>
-      <b>日時：</b>{{ header["purchased_at"] }}<br>
+      <b>日時：</b>{{ header["purchased_at"][:10] if header["purchased_at"] else "" }}<br>
       <b>仕入れ先：</b>{{ header["supplier_name"] or "" }}<br>
       <b>合計金額：</b>{{ "%.0f"|format(header["total_amount"] or 0) }}<br>
       <b>メモ：</b>{{ header["note"] or "" }}

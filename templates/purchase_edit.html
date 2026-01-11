@@ -16,9 +16,9 @@
       </select>
 
       <div>
-        <label>仕入れ日時（任意）</label>
-        <input type="datetime-local" name="purchased_at" value="{{ purchased_at_local }}">
-        <div class="muted">空なら元の日時を使います</div>
+        <label>仕入れ日（任意）</label>
+        <input type="date" name="purchased_date" value="{{ default_purchased_date }}">
+        <div class="muted">空なら元の日付を使います</div>
       </div>
 
       <label>場所</label>
@@ -40,7 +40,7 @@
           <tr>
             <th style="width:45%;">材料</th>
             <th style="width:20%;">数量(qty)</th>
-            <th style="width:20%;">単価(任意)</th>
+            <th style="width:20%;">単価(数量入力時は必須)</th>
           </tr>
         </thead>
         <tbody>
@@ -57,7 +57,7 @@
                   {% endfor %}
                 </select>
               </td>
-              <td><input name="qty" type="number" step="1" min="0" value="{{ row['qty'] }}"></td>
+              <td><input name="qty" type="number" step="1" min="0" value="{{ '%.0f'|format(row['qty']|float) if (row['qty'] is not none and row['qty'] != '') else '' }}"></td>
               <td><input name="unit_price" type="number" step="1" min="0" value="{{ row['unit_price'] if row['unit_price'] is not none else '' }}"></td>
             </tr>
           {% endfor %}

@@ -24,8 +24,14 @@
 
       <label>場所</label>
       <select name="location">
-        <option value="STORE" {{ "selected" if default_location is defined and default_location=="STORE" else "" }}>STORE（店舗）</option>
-        <option value="WAREHOUSE" {{ "selected" if default_location is defined and default_location=="WAREHOUSE" else "" }}>WAREHOUSE（倉庫）</option>
+        <option value="WAREHOUSE"
+          {{ "selected" if (default_location is not defined) or (default_location=="WAREHOUSE") else "" }}>
+          WAREHOUSE（倉庫/自宅）
+        </option>
+        <option value="STORE"
+          {{ "selected" if default_location is defined and default_location=="STORE" else "" }}>
+          STORE（店舗/トレーラー）
+        </option>
       </select>
 
       <label>メモ（任意）</label>
@@ -41,7 +47,7 @@
           <tr>
             <th style="width:45%;">材料</th>
             <th style="width:20%;">数量(qty)</th>
-            <th style="width:20%;">単価(任意)</th>
+            <th style="width:20%;">単価(数量入力時は必須)</th>
           </tr>
         </thead>
         <tbody>
@@ -61,8 +67,8 @@
                 </select>
               </td>
               <td>
-                <input name="qty" type="number" step="0.01" min="0"
-                       value="{{ '%.2f'|format(pl['qty']) if pl else '' }}"
+                <input name="qty" type="number" step="1" min="0"
+                       value="{{ '%.0f'|format(pl['qty']) if pl else '' }}"
                        placeholder="例：450">
               </td>
               <td>
