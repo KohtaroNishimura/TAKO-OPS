@@ -1129,6 +1129,43 @@ def calc_monthly_weighted_unit_cost(
     return avg_unit_cost, False, (used_ref_opening or used_ref_purchase)
 
 
+def calc_initial_stocktake_unit_cost(db, item_id: int, taken_at: str) -> float:
+    """
+    初回棚卸用: 棚卸日までの仕入実績平均単価を計算。
+    unit_price未入力はref_unit_priceで代用、数量0ならref_unit_price。
+    """
+    item = db.execute(
+        "SELECT ref_unit_price FROM items WHERE item_id=?", (item_id,)
+    ).fetchone()
+    ref = float(item["ref_unit_price"] or 0)
+
+    row = db.execute(
+        """
+        SELECT
+          COALESCE(SUM(
+            CASE
+              WHEN pl.line_amount IS NOT NULL THEN pl.line_amount
+              WHEN pl.unit_price IS NOT NULL THEN pl.qty * pl.unit_price
+              ELSE pl.qty * COALESCE(i.ref_unit_price, 0)
+            END
+          ), 0) AS amount_sum,
+          COALESCE(SUM(pl.qty), 0) AS qty_sum
+        FROM purchase_lines pl
+        JOIN purchases p ON p.purchase_id = pl.purchase_id
+        JOIN items i ON i.item_id = pl.item_id
+        WHERE pl.item_id = ?
+          AND datetime(p.purchased_at) <= datetime(?)
+        """,
+        (item_id, taken_at),
+    ).fetchone()
+
+    qty_sum = float(row["qty_sum"] or 0)
+    if qty_sum <= 0:
+        return ref
+    amount_sum = float(row["amount_sum"] or 0)
+    return amount_sum / qty_sum
+
+
 def format_daily_report_for_line(rep) -> str:
     """
     LINEへコピペする用の本文を作る
@@ -2144,6 +2181,21 @@ def stocktake_monthly_create():
     current_map = {r["item_id"]: float(r["qty"] or 0) for r in cur_rows}
     month_start, month_end = month_range_for_datetime(taken_at)
 
+    # 初回棚卸かどうか（それ以前のMONTHLYが存在しない）
+    prev_monthly = db.execute(
+        """
+        SELECT stocktake_id
+        FROM stocktakes
+        WHERE scope = 'MONTHLY'
+          AND location = ?
+          AND datetime(taken_at) < datetime(?)
+        ORDER BY datetime(taken_at) DESC, stocktake_id DESC
+        LIMIT 1
+        """,
+        (location, taken_at),
+    ).fetchone()
+    is_initial_stocktake = prev_monthly is None
+
     try:
         db.execute("BEGIN")
 
@@ -2181,9 +2233,12 @@ def stocktake_monthly_create():
                 counted = float(int(round(counted)))
 
             # stocktake_lines に保存（後で在庫金額計算に使う）
-            unit_cost, _no_qty, _used_ref = calc_monthly_weighted_unit_cost(
-                db, item_id, month_start, month_end, location=location
-            )
+            if is_initial_stocktake:
+                unit_cost = calc_initial_stocktake_unit_cost(db, item_id, taken_at)
+            else:
+                unit_cost, _no_qty, _used_ref = calc_monthly_weighted_unit_cost(
+                    db, item_id, month_start, month_end, location=location
+                )
             line_amount = counted * unit_cost
             db.execute(
                 """
