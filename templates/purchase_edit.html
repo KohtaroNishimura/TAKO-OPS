@@ -54,7 +54,7 @@
                 </select>
               </td>
               <td><input name="qty" type="number" step="1" min="0" value="{{ '%.0f'|format(row['qty']|float) if (row['qty'] is not none and row['qty'] != '') else '' }}"></td>
-              <td><input name="unit_price" type="number" step="1" min="0" value="{{ row['unit_price'] if row['unit_price'] is not none else '' }}"></td>
+              <td><input name="unit_price" type="number" step="0.01" min="0" value="{{ ('%.2f'|format(row['unit_price']|float)) if (row['unit_price'] is not none and row['unit_price'] != '') else '' }}"></td>
             </tr>
           {% endfor %}
         </tbody>
