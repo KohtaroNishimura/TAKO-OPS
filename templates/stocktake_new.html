@@ -62,7 +62,14 @@
               <td>{{ i["unit_base"] }}</td>
               <td>{{ "%.2f"|format(cur) }}</td>
               <td>
-                <input name="counted_qty" type="number" step="0.01" min="0" placeholder="例：{{ '%.2f'|format(cur) }}">
+                <input
+                  name="counted_qty"
+                  type="number"
+                  min="0"
+                  step="{{ '1' if i['unit_base']=='pcs' else '0.01' }}"
+                  value="{{ ('%.0f'|format(cur)) if i['unit_base']=='pcs' else ('%.2f'|format(cur)) }}"
+                  placeholder="例：{{ '%.2f'|format(cur) }}"
+                >
               </td>
             </tr>
           {% endfor %}
