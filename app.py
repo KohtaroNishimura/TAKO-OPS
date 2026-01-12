@@ -1485,7 +1485,8 @@ def stocktakes_list():
 def stocktake_new_form():
     # デフォルトはFOODのみ
     only_food = request.args.get("only_food", "1") != "0"
-    location = "ALL"
+    # 月次棚卸は倉庫へ寄せる前提
+    location = "WAREHOUSE"
 
     items = fetch_items_for_stocktake(only_food)
 
@@ -1519,7 +1520,8 @@ def stocktake_create():
     taken_at_local = (request.form.get("taken_at") or "").strip()
     taken_at = _to_datetime_seconds(taken_at_local)  # 'YYYY-MM-DD HH:MM:00' or None
     scope = "MONTHLY"  # 今回は月次固定（必要ならフォーム化できます）
-    location = "ALL"
+    # 月次棚卸は倉庫での実測を前提
+    location = "WAREHOUSE"
     note = (request.form.get("note") or "").strip() or None
 
     only_food = (request.form.get("only_food") or "1") != "0"
