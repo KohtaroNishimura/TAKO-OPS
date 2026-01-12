@@ -211,7 +211,7 @@ def supplier_new_form():
 def supplier_create():
     name = (request.form.get("name") or "").strip()
     phone = (request.form.get("phone") or "").strip() or None
-    location = "ALL"
+    location = "WAREHOUSE"
 
     note = (request.form.get("note") or "").strip() or None
 
@@ -394,7 +394,7 @@ def purchase_create():
         # 空ならDB側のDEFAULTに任せる
         purchased_at = None
 
-    location = "ALL"
+    location = "WAREHOUSE"
 
     note = (request.form.get("note") or "").strip() or None
 
@@ -740,7 +740,7 @@ def purchase_update(purchase_id: int):
     else:
         purchased_at_db = header["purchased_at"]
 
-    location = "ALL"
+    location = "WAREHOUSE"
 
     note = (request.form.get("note") or "").strip() or None
 
@@ -1069,7 +1069,7 @@ def regenerate_inventory_tx_for_daily_report(db, daily_report_id: int) -> int:
     waste_batches = (waste_pieces / pieces_per_batch) if pieces_per_batch > 0 else 0.0
 
     happened_at = f"{report_date} 09:00:00"
-    location = "ALL"
+    location = "STORE"
 
     # まず既存の自動生成分を削除（編集時に二重計上させない）
     db.execute(
