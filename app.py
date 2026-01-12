@@ -2448,7 +2448,8 @@ def monthly_food_cost():
     # 月選択：?ym=2026-01（なければ今月）
     ym = (request.args.get("ym") or date.today().strftime("%Y-%m")).strip()
 
-    location = "ALL"
+    # 月次棚卸は倉庫に寄せる運用
+    location = "WAREHOUSE"
 
     ideal_ratio = 0.38  # 理想38%
 
