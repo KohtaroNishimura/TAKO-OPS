@@ -1711,6 +1711,146 @@ def stocktake_detail(stocktake_id: int):
     )
 
 
+def _get_active_batch_config_id(db):
+    row = db.execute(
+        """
+        SELECT batch_config_id
+        FROM batch_config
+        WHERE is_active = 1
+        ORDER BY batch_config_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    if not row:
+        return None
+    return row["batch_config_id"]
+
+
+def _get_manual_items_for_weekly(db, batch_config_id: int):
+    # 手動管理＝auto_consume=0（NULLも0扱いにして手動に寄せる）
+    # 理論在庫＝inventory_tx合計
+    # 前回週次棚卸値（あれば）も取る
+    return db.execute(
+        """
+        SELECT
+            i.item_id,
+            i.name,
+            i.unit_base,
+            i.reorder_point,
+            COALESCE(rb.auto_consume, 0) AS auto_consume,
+            COALESCE((
+                SELECT SUM(tx.qty_delta)
+                FROM inventory_tx tx
+                WHERE tx.item_id = i.item_id
+            ), 0) AS theoretical_qty,
+            (
+                SELECT sl.counted_qty
+                FROM stocktake_lines sl
+                JOIN stocktakes st ON st.stocktake_id = sl.stocktake_id
+                WHERE st.scope = 'WEEKLY' AND sl.item_id = i.item_id
+                ORDER BY st.taken_at DESC
+                LIMIT 1
+            ) AS last_weekly_qty
+        FROM items i
+        LEFT JOIN recipe_batch rb
+          ON rb.item_id = i.item_id
+         AND rb.batch_config_id = ?
+        WHERE i.is_active = 1
+          AND COALESCE(rb.auto_consume, 0) = 0
+        ORDER BY i.name COLLATE NOCASE
+        """,
+        (batch_config_id,),
+    ).fetchall()
+
+
+@app.get("/stocktakes/weekly/new")
+def stocktake_weekly_new():
+    db = get_db()
+    batch_config_id = _get_active_batch_config_id(db)
+    if not batch_config_id:
+        flash(
+            "アクティブなBATCH_CONFIGがありません。先に batch_config を作成してください。",
+            "error",
+        )
+        return redirect(url_for("recipe_batch_edit"))
+
+    items = _get_manual_items_for_weekly(db, batch_config_id)
+    return render_template("stocktake_weekly_new.html", items=items)
+
+
+@app.post("/stocktakes/weekly/new")
+def stocktake_weekly_create():
+    db = get_db()
+    batch_config_id = _get_active_batch_config_id(db)
+    if not batch_config_id:
+        flash("アクティブなBATCH_CONFIGがありません。", "error")
+        return redirect(url_for("recipe_batch_edit"))
+
+    items = _get_manual_items_for_weekly(db, batch_config_id)
+    taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    note = (request.form.get("note") or "").strip()
+
+    try:
+        db.execute("BEGIN")
+
+        # stocktakes 作成（scope=WEEKLY）
+        cur = db.execute(
+            """
+            INSERT INTO stocktakes (taken_at, scope, location, note)
+            VALUES (?, 'WEEKLY', 'WAREHOUSE', ?)
+            """,
+            (taken_at, note),
+        )
+        stocktake_id = cur.lastrowid
+
+        # 各行を保存＆差分をADJUST反映
+        for it in items:
+            item_id = it["item_id"]
+            raw = (request.form.get(f"counted_{item_id}") or "").strip()
+            if raw == "":
+                # 未入力はスキップ（=棚卸ししなかった扱い）
+                continue
+
+            try:
+                counted_qty = float(raw)
+            except ValueError:
+                continue
+
+            db.execute(
+                """
+                INSERT INTO stocktake_lines (stocktake_id, item_id, counted_qty)
+                VALUES (?, ?, ?)
+                """,
+                (stocktake_id, item_id, counted_qty),
+            )
+
+            theoretical_qty = float(it["theoretical_qty"] or 0)
+            diff = counted_qty - theoretical_qty
+
+            # 差分がある場合のみADJUSTを入れる
+            if abs(diff) > 1e-9:
+                db.execute(
+                    """
+                    INSERT INTO inventory_tx
+                      (happened_at, item_id, qty_delta, tx_type, location, ref_type, ref_id, note)
+                    VALUES
+                      (?, ?, ?, 'ADJUST', 'WAREHOUSE', 'STOCKTAKE', ?, 'WEEKLY STOCKTAKE')
+                    """,
+                    (taken_at, item_id, diff, stocktake_id),
+                )
+
+        db.execute("COMMIT")
+        flash("週次棚卸を保存しました（差分は在庫に反映済み）", "success")
+
+        # 保存後は「買い物リスト」に飛ぶ運用が楽
+        return redirect(url_for("shopping_list"))
+
+    except Exception as e:
+        db.execute("ROLLBACK")
+        flash(f"週次棚卸の保存に失敗しました: {e}", "error")
+        return redirect(url_for("stocktake_weekly_new"))
+
+
 # -----------------------------
 # Stocktakes (月次: 新フォーム)
 # -----------------------------

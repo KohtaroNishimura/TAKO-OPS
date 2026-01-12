@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <h2>週次棚卸（手動管理のみ）</h2>
+  <p class="muted">
+    対象：レシピ設定で auto_consume がOFF（=0）の材料だけ。<br>
+    入力した残量で在庫を上書きし、差分は inventory_tx に ADJUST 反映します。<br>
+    保存後は買い物リストで「発注目安未満」を確認してください。
+  </p>
+
+  <form method="post">
+    <label>メモ（任意）</label>
+    <input name="note" placeholder="例：日曜夜に棚卸 / まとめ買い後 など">
+
+    <table style="margin-top:12px;">
+      <thead>
+        <tr>
+          <th>材料</th>
+          <th>単位</th>
+          <th>理論在庫</th>
+          <th>発注目安</th>
+          <th>今回の実在庫（入力）</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td>{{ it["name"] }}</td>
+          <td>{{ it["unit_base"] }}</td>
+          <td>{{ it["theoretical_qty"] }}</td>
+          <td>{{ it["reorder_point"] }}</td>
+          <td style="min-width:220px;">
+            {# 前回週次棚卸があればそれを初期値、無ければ理論在庫を初期値に #}
+            <input
+              name="counted_{{ it['item_id'] }}"
+              value="{% if it['last_weekly_qty'] is not none %}{{ it['last_weekly_qty'] }}{% else %}{{ it['theoretical_qty'] }}{% endif %}"
+              {% if it["unit_base"] == "pcs" %}step="1"{% else %}step="0.01"{% endif %}
+              type="number"
+            >
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="actions">
+      <button type="submit">保存して在庫へ反映 → 買い物リストへ</button>
+      <a class="button-link" href="{{ url_for('stocktakes_list') }}">棚卸一覧へ</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
