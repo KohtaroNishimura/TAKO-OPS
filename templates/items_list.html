@@ -18,6 +18,7 @@
           <th>単位</th>
           <th>発注目安</th>
           <th>参考価格</th>
+          <th>メモ</th>
           <th>原価区分</th>
           <th>固定（本部指定）</th>
           <th>仕入れ先</th>
@@ -32,7 +33,8 @@
             <td>{{ i["name"] }}</td>
             <td>{{ i["unit_base"] }}</td>
             <td>{{ "%.2f"|format(i["reorder_point"]) }}</td>
-            <td>{{ "%.0f"|format(i["ref_unit_price"]) }}</td>
+            <td>{{ "%.2f"|format(i["ref_unit_price"]) }}</td>
+            <td>{{ i["note"] or "" }}</td>
             <td>{{ "食材" if i["cost_group"]=="FOOD" else "消耗品" }}</td>
             <td>{{ "✓" if i["is_fixed"] else "" }}</td>
             <td>{{ i["supplier_name"] or "" }}</td>
@@ -49,7 +51,7 @@
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="10">まだ材料がありません。「新規登録」から追加してください。</td></tr>
+          <tr><td colspan="11">まだ材料がありません。「新規登録」から追加してください。</td></tr>
         {% endfor %}
       </tbody>
     </table>

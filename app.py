@@ -15,6 +15,23 @@ app.secret_key = "dev-secret-key-change-me"  # flash用（あとで環境変数�
 app.teardown_appcontext(close_db)
 
 
+def ensure_items_note_column() -> None:
+    db = get_db()
+    try:
+        cols = db.execute("PRAGMA table_info(items)").fetchall()
+        col_names = {row["name"] for row in cols}
+        if "note" not in col_names:
+            db.execute("ALTER TABLE items ADD COLUMN note TEXT")
+            commit_and_sync()
+    except Exception:
+        db.rollback()
+
+
+@app.before_first_request
+def _ensure_schema():
+    ensure_items_note_column()
+
+
 def _to_float(value: str, default: float = 0.0) -> float:
     value = (value or "").strip()
     if value == "":
@@ -41,6 +58,7 @@ def fetch_item(item_id: int) -> sqlite3.Row | None:
           i.unit_base,
           i.reorder_point,
           i.ref_unit_price,
+          i.note,
           i.is_fixed,
           i.is_active,
           s.name AS supplier_name
@@ -71,6 +89,7 @@ def items_list():
           i.unit_base,
           i.reorder_point,
           i.ref_unit_price,
+          i.note,
           i.is_fixed,
           i.cost_group,
           i.is_active,
@@ -98,6 +117,7 @@ def item_create():
     unit_base = (request.form.get("unit_base") or "").strip()
     reorder_point = _to_float(request.form.get("reorder_point", ""), 0.0)
     ref_unit_price = _to_float(request.form.get("ref_unit_price", ""), 0.0)
+    note = (request.form.get("note") or "").strip() or None
     is_fixed = 1 if request.form.get("is_fixed") == "1" else 0
     cost_group = (request.form.get("cost_group") or "SUPPLIES").strip()
     if cost_group not in ("FOOD", "SUPPLIES"):
@@ -127,11 +147,11 @@ def item_create():
             """
             INSERT INTO items (
               supplier_id, name, category, unit_base,
-              reorder_point, ref_unit_price, is_fixed, cost_group, is_active
+              reorder_point, ref_unit_price, note, is_fixed, cost_group, is_active
             )
-            VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (supplier_id, name, unit_base, reorder_point, ref_unit_price, is_fixed, cost_group, is_active),
+            (supplier_id, name, unit_base, reorder_point, ref_unit_price, note, is_fixed, cost_group, is_active),
         )
         commit_and_sync()
     except sqlite3.IntegrityError as e:
@@ -2511,6 +2531,7 @@ def item_update(item_id: int):
     unit_base = (request.form.get("unit_base") or "").strip()
     reorder_point = _to_float(request.form.get("reorder_point", ""), 0.0)
     ref_unit_price = _to_float(request.form.get("ref_unit_price", ""), 0.0)
+    note = (request.form.get("note") or "").strip() or None
     is_fixed = 1 if request.form.get("is_fixed") == "1" else 0
     cost_group = (request.form.get("cost_group") or "SUPPLIES").strip()
     if cost_group not in ("FOOD", "SUPPLIES"):
@@ -2545,12 +2566,13 @@ def item_update(item_id: int):
               unit_base = ?,
               reorder_point = ?,
               ref_unit_price = ?,
+              note = ?,
               is_fixed = ?,
               cost_group = ?,
               is_active = ?
             WHERE item_id = ?
             """,
-            (supplier_id, name, unit_base, reorder_point, ref_unit_price, is_fixed, cost_group, is_active, item_id),
+            (supplier_id, name, unit_base, reorder_point, ref_unit_price, note, is_fixed, cost_group, is_active, item_id),
         )
         commit_and_sync()
     except sqlite3.IntegrityError as e:

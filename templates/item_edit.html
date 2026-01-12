@@ -31,10 +31,13 @@
         </div>
         <div>
           <label>参考価格（ref_unit_price）</label>
-          <input name="ref_unit_price" type="number" step="1" min="0"
-                 value="{{ item['ref_unit_price'] }}">
+          <input name="ref_unit_price" type="number" step="0.01" min="0"
+                 value="{{ '%.2f'|format(item['ref_unit_price'] or 0) }}">
         </div>
       </div>
+
+      <label>メモ</label>
+      <textarea name="note" rows="3">{{ item['note'] or '' }}</textarea>
 
       <label>仕入れ先（任意）</label>
       <select name="supplier_id">

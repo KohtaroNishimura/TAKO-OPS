@@ -33,7 +33,7 @@
             <td>{{ r["unit_base"] }}</td>
             <td><b>{{ "%.2f"|format(r["qty_total"]) }}</b></td>
             <td>{{ "%.2f"|format(r["reorder_point"]) }}</td>
-            <td>{{ "%.0f"|format(r["ref_unit_price"] or 0) }}</td>
+            <td>{{ "%.2f"|format(r["ref_unit_price"] or 0) }}</td>
             <td>{{ r["supplier_name"] or "" }}</td>
             <td>{{ "✓" if r["is_fixed"] else "" }}</td>
           </tr>
