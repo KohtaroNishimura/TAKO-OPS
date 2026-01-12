@@ -30,12 +30,27 @@ def ensure_items_note_column() -> None:
         db.rollback()
 
 
+def ensure_stocktake_lines_cost_columns() -> None:
+    db = get_db()
+    try:
+        cols = db.execute("PRAGMA table_info(stocktake_lines)").fetchall()
+        col_names = {row["name"] for row in cols}
+        if "unit_cost" not in col_names:
+            db.execute("ALTER TABLE stocktake_lines ADD COLUMN unit_cost REAL")
+        if "line_amount" not in col_names:
+            db.execute("ALTER TABLE stocktake_lines ADD COLUMN line_amount REAL")
+        commit_and_sync()
+    except Exception:
+        db.rollback()
+
+
 @app.before_request
 def _ensure_schema():
     global _items_note_column_ready
     if _items_note_column_ready:
         return
     ensure_items_note_column()
+    ensure_stocktake_lines_cost_columns()
     _items_note_column_ready = True
 
 
@@ -980,6 +995,138 @@ def month_range(ym: str):
     else:
         nxt = date(y, m + 1, 1)
     return start.isoformat(), nxt.isoformat()
+
+
+def month_range_for_datetime(dt_str: str):
+    """
+    dt_str: 'YYYY-MM-DD HH:MM:SS'
+    return: (month_start_str, next_month_start_str)
+    """
+    dt = datetime.strptime(dt_str[:19], "%Y-%m-%d %H:%M:%S")
+    start = dt.replace(day=1, hour=0, minute=0, second=0)
+    if start.month == 12:
+        end = start.replace(year=start.year + 1, month=1)
+    else:
+        end = start.replace(month=start.month + 1)
+    return start.strftime("%Y-%m-%d %H:%M:%S"), end.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def get_opening_monthly_stocktake_id(db, month_start: str, location: str | None = None):
+    if location:
+        row = db.execute(
+            """
+            SELECT stocktake_id, taken_at
+            FROM stocktakes
+            WHERE scope = 'MONTHLY'
+              AND location = ?
+              AND taken_at < ?
+            ORDER BY taken_at DESC
+            LIMIT 1
+            """,
+            (location, month_start),
+        ).fetchone()
+        return row
+    row = db.execute(
+        """
+        SELECT stocktake_id, taken_at
+        FROM stocktakes
+        WHERE scope = 'MONTHLY'
+          AND taken_at < ?
+        ORDER BY taken_at DESC
+        LIMIT 1
+        """,
+        (month_start,),
+    ).fetchone()
+    return row
+
+
+def calc_monthly_weighted_unit_cost(
+    db, item_id: int, month_start: str, month_end: str, location: str | None = None
+):
+    """
+    月次総平均（加重平均）単価を計算。
+    unit_price未入力なら ref_unit_price 代用、代用が発生したら warning を返す。
+    """
+    # 参考単価
+    item = db.execute(
+        "SELECT ref_unit_price FROM items WHERE item_id=?", (item_id,)
+    ).fetchone()
+    ref = float(item["ref_unit_price"] or 0)
+
+    # 期首（月初の前の月次棚卸）
+    opening = get_opening_monthly_stocktake_id(db, month_start, location=location)
+
+    opening_qty = 0.0
+    opening_amount = 0.0
+    used_ref_opening = False
+
+    if opening:
+        sl = db.execute(
+            """
+            SELECT counted_qty, unit_cost, line_amount
+            FROM stocktake_lines
+            WHERE stocktake_id=? AND item_id=?
+            LIMIT 1
+            """,
+            (opening["stocktake_id"], item_id),
+        ).fetchone()
+        if sl:
+            opening_qty = float(sl["counted_qty"] or 0)
+            uc = sl["unit_cost"]
+            la = sl["line_amount"]
+            if la is not None:
+                opening_amount = float(la or 0)
+            else:
+                # unit_costが無い過去データは参考単価で代用
+                used_ref_opening = True
+                unit_cost = float(uc) if uc is not None else ref
+                opening_amount = opening_qty * unit_cost
+
+    # 当月仕入（実績優先、無ければ参考単価代用）
+    rows = db.execute(
+        """
+        SELECT pl.qty,
+               pl.unit_price,
+               pl.line_amount,
+               i.ref_unit_price AS ref_unit_price
+        FROM purchase_lines pl
+        JOIN purchases p ON p.purchase_id = pl.purchase_id
+        JOIN items i ON i.item_id = pl.item_id
+        WHERE pl.item_id=?
+          AND p.purchased_at >= ?
+          AND p.purchased_at < ?
+        """,
+        (item_id, month_start, month_end),
+    ).fetchall()
+
+    purchased_qty = 0.0
+    purchased_amount = 0.0
+    used_ref_purchase = False
+
+    for r in rows:
+        qty = float(r["qty"] or 0)
+        if qty <= 0:
+            continue
+        purchased_qty += qty
+
+        if r["line_amount"] is not None:
+            purchased_amount += float(r["line_amount"] or 0)
+        else:
+            unit_price = r["unit_price"]
+            if unit_price is None:
+                # unit_price未入力 → 参考単価で代用
+                used_ref_purchase = True
+                purchased_amount += qty * float(r["ref_unit_price"] or 0)
+            else:
+                purchased_amount += qty * float(unit_price)
+
+    denom = opening_qty + purchased_qty
+    if denom <= 0:
+        # 数量が0なら単価を作れない → 参考単価
+        return ref, True, (used_ref_opening or used_ref_purchase)
+
+    avg_unit_cost = (opening_amount + purchased_amount) / denom
+    return avg_unit_cost, False, (used_ref_opening or used_ref_purchase)
 
 
 def format_daily_report_for_line(rep) -> str:
@@ -1995,6 +2142,7 @@ def stocktake_monthly_create():
             (location,),
         ).fetchall()
     current_map = {r["item_id"]: float(r["qty"] or 0) for r in cur_rows}
+    month_start, month_end = month_range_for_datetime(taken_at)
 
     try:
         db.execute("BEGIN")
@@ -2033,12 +2181,18 @@ def stocktake_monthly_create():
                 counted = float(int(round(counted)))
 
             # stocktake_lines に保存（後で在庫金額計算に使う）
+            unit_cost, _no_qty, _used_ref = calc_monthly_weighted_unit_cost(
+                db, item_id, month_start, month_end, location=location
+            )
+            line_amount = counted * unit_cost
             db.execute(
                 """
-                INSERT INTO stocktake_lines (stocktake_id, item_id, counted_qty)
-                VALUES (?, ?, ?)
+                INSERT INTO stocktake_lines (
+                  stocktake_id, item_id, counted_qty, unit_cost, line_amount
+                )
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (stocktake_id, item_id, counted),
+                (stocktake_id, item_id, counted, unit_cost, line_amount),
             )
 
             current = current_map.get(item_id, 0.0)
@@ -2469,10 +2623,18 @@ def monthly_food_cost():
     ).fetchone()["v"]
 
     # 当月仕入金額（FOODのみ）
-    # unit_priceがNULLならref_unit_priceで代用
-    purchases_cost = db.execute(
+    # unit_price未入力はref_unit_priceで代用し、件数も取る
+    purchases_row = db.execute(
         """
-        SELECT COALESCE(SUM(pl.qty * COALESCE(pl.unit_price, i.ref_unit_price)), 0) AS v
+        SELECT
+          COALESCE(SUM(
+            CASE
+              WHEN pl.line_amount IS NOT NULL THEN pl.line_amount
+              WHEN pl.unit_price IS NOT NULL THEN pl.qty * pl.unit_price
+              ELSE pl.qty * i.ref_unit_price
+            END
+          ), 0) AS purchase_amount,
+          SUM(CASE WHEN pl.unit_price IS NULL AND pl.line_amount IS NULL THEN 1 ELSE 0 END) AS used_ref_count
         FROM purchase_lines pl
         JOIN purchases p ON p.purchase_id = pl.purchase_id
         JOIN items i ON i.item_id = pl.item_id
@@ -2481,7 +2643,9 @@ def monthly_food_cost():
           AND date(p.purchased_at) < ?
         """,
         (start_date, next_date),
-    ).fetchone()["v"]
+    ).fetchone()
+    purchases_cost = purchases_row["purchase_amount"]
+    used_ref_count = int(purchases_row["used_ref_count"] or 0)
 
     # 期首：開始日より前の最新MONTHLY棚卸（location指定）
     begin_st = db.execute(
@@ -2518,7 +2682,7 @@ def monthly_food_cost():
         begin_taken_at = begin_st["taken_at"]
         begin_value = db.execute(
             """
-            SELECT COALESCE(SUM(sl.counted_qty * i.ref_unit_price), 0) AS v
+            SELECT COALESCE(SUM(sl.line_amount), 0) AS v
             FROM stocktake_lines sl
             JOIN items i ON i.item_id = sl.item_id
             WHERE sl.stocktake_id = ?
@@ -2552,7 +2716,7 @@ def monthly_food_cost():
         end_taken_at = end_st["taken_at"]
         end_value = db.execute(
             """
-            SELECT COALESCE(SUM(sl.counted_qty * i.ref_unit_price), 0) AS v
+            SELECT COALESCE(SUM(sl.line_amount), 0) AS v
             FROM stocktake_lines sl
             JOIN items i ON i.item_id = sl.item_id
             WHERE sl.stocktake_id = ?
@@ -2569,7 +2733,7 @@ def monthly_food_cost():
               i.unit_base,
               sl.counted_qty,
               i.ref_unit_price,
-              (sl.counted_qty * i.ref_unit_price) AS amount
+              sl.line_amount AS amount
             FROM stocktake_lines sl
             JOIN items i ON i.item_id = sl.item_id
             WHERE sl.stocktake_id = ?
@@ -2621,6 +2785,7 @@ def monthly_food_cost():
         ideal_ratio=ideal_ratio,
         sales=float(sales),
         purchases_cost=float(purchases_cost),
+        used_ref_count=used_ref_count,
         begin_value=float(begin_value),
         end_value=float(end_value),
         cogs=float(cogs),
