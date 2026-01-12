@@ -2639,6 +2639,7 @@ def monthly_food_cost():
         JOIN purchases p ON p.purchase_id = pl.purchase_id
         JOIN items i ON i.item_id = pl.item_id
         WHERE i.cost_group = 'FOOD'
+          AND (p.note IS NULL OR p.note NOT LIKE '%初回棚卸%')
           AND date(p.purchased_at) >= ?
           AND date(p.purchased_at) < ?
         """,
@@ -2757,6 +2758,7 @@ def monthly_food_cost():
         JOIN purchases p ON p.purchase_id = pl.purchase_id
         JOIN items i ON i.item_id = pl.item_id
         WHERE i.cost_group = 'FOOD'
+          AND (p.note IS NULL OR p.note NOT LIKE '%初回棚卸%')
           AND date(p.purchased_at) >= ?
           AND date(p.purchased_at) < ?
         GROUP BY i.item_id
