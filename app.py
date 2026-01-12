@@ -1749,15 +1749,24 @@ def stocktake_monthly_new():
         ).fetchall()
 
     # 現在庫（inventory_tx の合計）
-    cur_rows = db.execute(
-        """
-        SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
-        FROM inventory_tx
-        WHERE location = ?
-        GROUP BY item_id
-        """,
-        (location,),
-    ).fetchall()
+    if location == "ALL":
+        cur_rows = db.execute(
+            """
+            SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
+            FROM inventory_tx
+            GROUP BY item_id
+            """
+        ).fetchall()
+    else:
+        cur_rows = db.execute(
+            """
+            SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
+            FROM inventory_tx
+            WHERE location = ?
+            GROUP BY item_id
+            """,
+            (location,),
+        ).fetchall()
     current_map = {r["item_id"]: float(r["qty"] or 0) for r in cur_rows}
 
     # 画面表示用：現在庫を埋めた行リスト
@@ -1823,15 +1832,24 @@ def stocktake_monthly_create():
         ).fetchall()
 
     # 現在庫（POST時点）
-    cur_rows = db.execute(
-        """
-        SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
-        FROM inventory_tx
-        WHERE location = ?
-        GROUP BY item_id
-        """,
-        (location,),
-    ).fetchall()
+    if location == "ALL":
+        cur_rows = db.execute(
+            """
+            SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
+            FROM inventory_tx
+            GROUP BY item_id
+            """
+        ).fetchall()
+    else:
+        cur_rows = db.execute(
+            """
+            SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
+            FROM inventory_tx
+            WHERE location = ?
+            GROUP BY item_id
+            """,
+            (location,),
+        ).fetchall()
     current_map = {r["item_id"]: float(r["qty"] or 0) for r in cur_rows}
 
     try:
