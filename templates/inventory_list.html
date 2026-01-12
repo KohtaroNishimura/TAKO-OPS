@@ -22,7 +22,7 @@
       </thead>
       <tbody>
         {% for r in rows %}
-          {% set low = (r["qty_total"] <= r["reorder_point"]) %}
+          {% set low = (r["qty_total"] < r["reorder_point"]) %}
           <tr class="{{ 'bg-rose-50' if low else '' }}">
             <td>
               {{ r["name"] }}
