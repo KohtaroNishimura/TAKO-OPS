@@ -15,6 +15,9 @@ app.secret_key = "dev-secret-key-change-me"  # flash用（あとで環境変数�
 app.teardown_appcontext(close_db)
 
 
+_items_note_column_ready = False
+
+
 def ensure_items_note_column() -> None:
     db = get_db()
     try:
@@ -27,9 +30,13 @@ def ensure_items_note_column() -> None:
         db.rollback()
 
 
-@app.before_first_request
+@app.before_request
 def _ensure_schema():
+    global _items_note_column_ready
+    if _items_note_column_ready:
+        return
     ensure_items_note_column()
+    _items_note_column_ready = True
 
 
 def _to_float(value: str, default: float = 0.0) -> float:
