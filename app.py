@@ -2607,74 +2607,42 @@ def monthly_food_cost():
 
     ideal_ratio = 0.38  # 理想38%
 
-    start_date, next_date = month_range(ym)
+    month_start, month_end = month_range(ym)
 
     db = get_db()
 
-    # 売上（daily_reports.sales_amount の月合計）
-    sales = db.execute(
-        """
-        SELECT COALESCE(SUM(sales_amount), 0) AS v
-        FROM daily_reports
-        WHERE report_date >= ?
-          AND report_date < ?
-        """,
-        (start_date, next_date),
-    ).fetchone()["v"]
-
-    # 当月仕入金額（FOODのみ）
-    # unit_price未入力はref_unit_priceで代用し、件数も取る
-    purchases_row = db.execute(
-        """
-        SELECT
-          COALESCE(SUM(
-            CASE
-              WHEN pl.line_amount IS NOT NULL THEN pl.line_amount
-              WHEN pl.unit_price IS NOT NULL THEN pl.qty * pl.unit_price
-              ELSE pl.qty * i.ref_unit_price
-            END
-          ), 0) AS purchase_amount,
-          SUM(CASE WHEN pl.unit_price IS NULL AND pl.line_amount IS NULL THEN 1 ELSE 0 END) AS used_ref_count
-        FROM purchase_lines pl
-        JOIN purchases p ON p.purchase_id = pl.purchase_id
-        JOIN items i ON i.item_id = pl.item_id
-        WHERE i.cost_group = 'FOOD'
-          AND (p.note IS NULL OR p.note NOT LIKE '%初回棚卸%')
-          AND date(p.purchased_at) >= ?
-          AND date(p.purchased_at) < ?
-        """,
-        (start_date, next_date),
-    ).fetchone()
-    purchases_cost = purchases_row["purchase_amount"]
-    used_ref_count = int(purchases_row["used_ref_count"] or 0)
-
-    # 期首：開始日より前の最新MONTHLY棚卸（location指定）
+    # 期首：通常は月初より前の最新MONTHLY棚卸
     begin_st = db.execute(
         """
         SELECT stocktake_id, taken_at
         FROM stocktakes
         WHERE scope = 'MONTHLY'
           AND location = ?
-          AND date(taken_at) < ?
-        ORDER BY taken_at DESC, stocktake_id DESC
+          AND datetime(taken_at) < datetime(?)
+        ORDER BY datetime(taken_at) DESC, stocktake_id DESC
         LIMIT 1
         """,
-        (location, start_date),
+        (location, month_start),
     ).fetchone()
+
+    is_cutover_month = False
     if begin_st is None:
+        # 運用開始月：月内の最初のMONTHLYを期首扱いにする
         begin_st = db.execute(
             """
             SELECT stocktake_id, taken_at
             FROM stocktakes
             WHERE scope = 'MONTHLY'
               AND location = ?
-              AND date(taken_at) >= ?
-              AND date(taken_at) < ?
-            ORDER BY taken_at ASC, stocktake_id ASC
+              AND datetime(taken_at) >= datetime(?)
+              AND datetime(taken_at) < datetime(?)
+            ORDER BY datetime(taken_at) ASC, stocktake_id ASC
             LIMIT 1
             """,
-            (location, start_date, next_date),
+            (location, month_start, month_end),
         ).fetchone()
+        if begin_st:
+            is_cutover_month = True
 
     begin_value = 0.0
     begin_taken_at = None
@@ -2701,12 +2669,12 @@ def monthly_food_cost():
         FROM stocktakes
         WHERE scope = 'MONTHLY'
           AND location = ?
-          AND date(taken_at) >= ?
-          AND date(taken_at) < ?
-        ORDER BY taken_at DESC, stocktake_id DESC
+          AND datetime(taken_at) >= datetime(?)
+          AND datetime(taken_at) < datetime(?)
+        ORDER BY datetime(taken_at) DESC, stocktake_id DESC
         LIMIT 1
         """,
-        (location, start_date, next_date),
+        (location, month_start, month_end),
     ).fetchone()
 
     end_value = 0.0
@@ -2746,6 +2714,52 @@ def monthly_food_cost():
     else:
         end_missing = True
 
+    effective_start = month_start
+    if is_cutover_month and begin_st:
+        effective_start = begin_st["taken_at"]
+
+    effective_end = month_end
+    if end_st:
+        # 期末棚卸より後は「翌月在庫」になるので、期間末を期末棚卸時点に寄せる
+        effective_end = end_st["taken_at"]
+
+    # 当月仕入金額（FOODのみ）
+    # unit_price未入力はref_unit_priceで代用し、件数も取る
+    purchases_row = db.execute(
+        """
+        SELECT
+          COALESCE(SUM(
+            CASE
+              WHEN pl.line_amount IS NOT NULL THEN pl.line_amount
+              WHEN pl.unit_price IS NOT NULL THEN pl.qty * pl.unit_price
+              ELSE pl.qty * i.ref_unit_price
+            END
+          ), 0) AS purchase_amount,
+          SUM(CASE WHEN pl.unit_price IS NULL AND pl.line_amount IS NULL THEN 1 ELSE 0 END) AS used_ref_count
+        FROM purchase_lines pl
+        JOIN purchases p ON p.purchase_id = pl.purchase_id
+        JOIN items i ON i.item_id = pl.item_id
+        WHERE i.cost_group = 'FOOD'
+          AND (p.note IS NULL OR p.note NOT LIKE '%初回棚卸%')
+          AND datetime(p.purchased_at) >= datetime(?)
+          AND datetime(p.purchased_at) < datetime(?)
+        """,
+        (effective_start, effective_end),
+    ).fetchone()
+    purchases_cost = purchases_row["purchase_amount"]
+    used_ref_count = int(purchases_row["used_ref_count"] or 0)
+
+    # 売上（daily_reports.sales_amount の月合計）
+    sales = db.execute(
+        """
+        SELECT COALESCE(SUM(sales_amount), 0) AS v
+        FROM daily_reports
+        WHERE datetime(report_date) >= datetime(?)
+          AND datetime(report_date) < datetime(?)
+        """,
+        (effective_start, effective_end),
+    ).fetchone()["v"]
+
     # 当月仕入の内訳（表示用）
     purchase_breakdown = db.execute(
         """
@@ -2759,12 +2773,12 @@ def monthly_food_cost():
         JOIN items i ON i.item_id = pl.item_id
         WHERE i.cost_group = 'FOOD'
           AND (p.note IS NULL OR p.note NOT LIKE '%初回棚卸%')
-          AND date(p.purchased_at) >= ?
-          AND date(p.purchased_at) < ?
+          AND datetime(p.purchased_at) >= datetime(?)
+          AND datetime(p.purchased_at) < datetime(?)
         GROUP BY i.item_id
         ORDER BY amount DESC, i.name ASC
         """,
-        (start_date, next_date),
+        (effective_start, effective_end),
     ).fetchall()
 
     # 原価計算
@@ -2781,8 +2795,8 @@ def monthly_food_cost():
     return render_template(
         "monthly_food_cost.html",
         ym=ym,
-        start_date=start_date,
-        next_date=next_date,
+        start_date=month_start,
+        next_date=month_end,
         location=location,
         ideal_ratio=ideal_ratio,
         sales=float(sales),
