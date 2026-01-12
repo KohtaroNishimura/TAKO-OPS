@@ -12,7 +12,7 @@
     <div class="quick mt-3 flex flex-wrap gap-2">
       <a class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="/daily-reports/new">📝 日報を入力</a>
       <a class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="/purchases/new">🧾 入庫を登録</a>
-      <a class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="/stocktakes/monthly/new">📦 月次棚卸</a>
+      <a class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="/stocktakes/weekly/new">📦 週次棚卸</a>
       <a class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="/shopping-list">🛒 買い物リスト</a>
     </div>
   </div>
@@ -43,6 +43,11 @@
       <div class="desc mt-1 text-sm text-slate-600">倉庫に寄せて棚卸→差分をADJUSTでinventory_txへ反映。</div>
     </a>
 
+    <a class="cardlink rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" href="/stocktakes/weekly/new">
+      <div class="title flex items-center gap-2 text-base font-semibold text-slate-900">📦 週次棚卸入力 <span class="pill ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Weekly</span></div>
+      <div class="desc mt-1 text-sm text-slate-600">手動管理の材料だけ在庫を上書き。差分はADJUST反映。</div>
+    </a>
+
     <a class="cardlink rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" href="/reports/monthly-food-cost">
       <div class="title flex items-center gap-2 text-base font-semibold text-slate-900">📈 月次 食材原価率 <span class="pill ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">COGS</span></div>
       <div class="desc mt-1 text-sm text-slate-600">食材（FOOD）原価率と理想38%との差を確認。</div>
@@ -62,14 +67,6 @@
       <div class="title flex items-center gap-2 text-base font-semibold text-slate-900">🏷️ 仕入れ先マスター <span class="pill ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Suppliers</span></div>
       <div class="desc mt-1 text-sm text-slate-600">仕入れ先の登録・編集・削除。材料の紐付け先。</div>
     </a>
-  </div>
-
-  <div class="dash-hero rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-    <div class="title text-base font-semibold text-slate-900">🔧 メモ</div>
-    <div class="desc muted mt-2 text-sm text-slate-600">
-      リンク先が404になる場合は、その機能のURLが別名になっているだけです（あとでTOPのhrefを合わせればOK）。
-      <br>まずは「迷わず操作できる導線」を優先して作ってます。
-    </div>
   </div>
 </div>
 
