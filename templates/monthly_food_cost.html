@@ -12,6 +12,10 @@
 
     <p class="muted">期間：{{ start_date }} 〜 {{ next_date }}（{{ next_date }}は含まない）</p>
 
+    {% if used_ref_count and used_ref_count > 0 %}
+      <p class="text-sm text-amber-700"><span class="font-semibold">注意：</span>unit_price未入力が {{ used_ref_count }} 件あるため、ref_unit_price で代用しました。</p>
+    {% endif %}
+
     {% if begin_missing %}
       <p class="text-sm text-red-700"><span class="font-semibold">注意：</span>期首棚卸（前月末の月次棚卸）が見つかりません。期首在庫は0として計算しています。</p>
     {% else %}
