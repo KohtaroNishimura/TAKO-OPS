@@ -1865,7 +1865,8 @@ def stocktake_monthly_new():
     if group not in ("FOOD", "ALL"):
         group = "FOOD"
 
-    location = "ALL"
+    # 月次棚卸は倉庫へ寄せる前提
+    location = "WAREHOUSE"
 
     # 入力は日付だけ（デフォルト今日）
     taken_date = (request.args.get("taken_date") or date.today().isoformat()).strip()
@@ -1943,7 +1944,8 @@ def stocktake_monthly_create():
     if group not in ("FOOD", "ALL"):
         group = "FOOD"
 
-    location = "ALL"
+    # 月次棚卸は倉庫へ寄せる前提
+    location = "WAREHOUSE"
 
     taken_date = (request.form.get("taken_date") or "").strip()
     if not taken_date:
