@@ -1173,7 +1173,7 @@ def format_daily_report_for_line(rep) -> str:
     【日報】
     ロス
     売れたバッチ
-    生産時間(入力値)
+    生産時間(入力値・時間)
 
     売上(カンマ区切り)
 
@@ -1184,7 +1184,7 @@ def format_daily_report_for_line(rep) -> str:
     sold_str = str(sold if sold is not None else 0)
 
     prod = rep["production_minutes"]
-    prod_str = str(int(prod or 0))  # そのまま数字で出す（4とか240とか）
+    prod_str = f"{float(prod or 0):.1f}"
 
     sales = rep["sales_amount"]
     sales_int = int(round(float(sales or 0)))
@@ -1362,7 +1362,9 @@ def daily_report_create():
 
     sold_batches = float((request.form.get("sold_batches") or "0").strip() or 0)
     waste_pieces = int((request.form.get("waste_pieces") or "0").strip() or 0)
-    production_minutes = int((request.form.get("production_minutes") or "0").strip() or 0)
+    production_minutes = float(
+        (request.form.get("production_minutes") or "0").strip() or 0
+    )
     sales_amount = float((request.form.get("sales_amount") or "0").strip() or 0)
     impression = (request.form.get("impression") or "").strip()
 
@@ -1437,7 +1439,9 @@ def daily_report_update(daily_report_id: int):
     report_date = (request.form.get("report_date") or "").strip()
     sold_batches = float((request.form.get("sold_batches") or "0").strip() or 0)
     waste_pieces = int((request.form.get("waste_pieces") or "0").strip() or 0)
-    production_minutes = int((request.form.get("production_minutes") or "0").strip() or 0)
+    production_minutes = float(
+        (request.form.get("production_minutes") or "0").strip() or 0
+    )
     sales_amount = float((request.form.get("sales_amount") or "0").strip() or 0)
     impression = (request.form.get("impression") or "").strip()
 

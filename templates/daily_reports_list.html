@@ -14,7 +14,7 @@
         <th>日付</th>
         <th>売れたバッチ</th>
         <th>ロス個数</th>
-        <th>生産時間(分)</th>
+        <th>生産時間(時間)</th>
         <th>売上(円)</th>
         <th>操作</th>
       </tr>
@@ -25,7 +25,7 @@
         <td>{{ r["report_date"] }}</td>
         <td>{{ r["sold_batches"] }}</td>
         <td>{{ r["waste_pieces"] }}</td>
-        <td>{{ r["production_minutes"] }}</td>
+        <td>{{ "%.1f"|format(r["production_minutes"] or 0) }}</td>
         <td>{{ "%.0f"|format(r["sales_amount"] or 0) }}</td>
         <td>
           <a class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" href="{{ url_for('daily_report_edit', daily_report_id=r['daily_report_id']) }}">編集</a>
