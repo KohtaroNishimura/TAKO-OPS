@@ -1994,10 +1994,8 @@ def stocktake_weekly_new():
         """
         SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
         FROM inventory_tx
-        WHERE location = ?
         GROUP BY item_id
-        """,
-        (location,),
+        """
     ).fetchall()
     current_map = {row["item_id"]: float(row["qty"] or 0) for row in cur_rows}
 
@@ -2145,10 +2143,8 @@ def stocktake_monthly_new():
         """
         SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
         FROM inventory_tx
-        WHERE location = ?
         GROUP BY item_id
-        """,
-        (location,),
+        """
     ).fetchall()
     current_map = {r["item_id"]: float(r["qty"] or 0) for r in cur_rows}
 
@@ -2202,10 +2198,8 @@ def stocktake_create_unified():
         """
         SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
         FROM inventory_tx
-        WHERE location = ?
         GROUP BY item_id
-        """,
-        (location,),
+        """
     ).fetchall()
     current_map = {r["item_id"]: float(r["qty"] or 0) for r in cur_rows}
 
