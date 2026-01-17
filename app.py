@@ -2335,6 +2335,11 @@ def stocktake_create_unified():
             (location, taken_at),
         ).fetchone()
         is_initial_stocktake = prev_monthly is None
+        cost_map = {}
+        if not is_initial_stocktake:
+            cost_map = build_monthly_weighted_unit_cost_map(
+                db, items, month_start, month_end, location=location
+            )
 
         try:
             db.execute("BEGIN")
