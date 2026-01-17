@@ -12,7 +12,7 @@
     <div class="quick mt-3 flex flex-wrap gap-2">
       <a class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="/daily-reports/new">📝 日報を入力</a>
       <a class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="/purchases/new">🧾 入庫を登録</a>
-      <a class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="/stocktakes/monthly/new">📦 棚卸入力</a>
+      <a class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="{{ url_for('stocktake_weekly_new') }}">📦 棚卸入力</a>
       <a class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" href="/shopping-list">🛒 買い物リスト</a>
     </div>
   </div>
@@ -38,7 +38,7 @@
       <div class="desc mt-1 text-sm text-slate-600">発注目安以下の材料を仕入れ先ごとにまとめて確認。</div>
     </a>
 
-    <a class="cardlink rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" href="/stocktakes/monthly/new">
+    <a class="cardlink rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" href="{{ url_for('stocktake_weekly_new') }}">
       <div class="title flex items-center gap-2 text-base font-semibold text-slate-900">📦 棚卸入力 <span class="pill ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Weekly / Monthly</span></div>
       <div class="desc mt-1 text-sm text-slate-600">週次・月次を切り替えて棚卸。差分はADJUSTでinventory_txへ反映。</div>
     </a>

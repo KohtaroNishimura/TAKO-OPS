@@ -1823,7 +1823,7 @@ def stocktake_new_form():
     # デフォルトはFOODのみ
     only_food = request.args.get("only_food", "1") != "0"
     group = "FOOD" if only_food else "ALL"
-    return redirect(url_for("stocktake_monthly_new", group=group))
+    return redirect(url_for("stocktake_weekly_new", group=group))
 
 
 @app.post("/stocktakes")
@@ -2253,7 +2253,7 @@ def stocktake_weekly_new():
 def stocktake_monthly_new():
     db = get_db()
 
-    mode = normalize_stocktake_mode(request.args.get("mode"), "monthly")
+    mode = normalize_stocktake_mode(request.args.get("mode"), "weekly")
     group = normalize_stocktake_group(request.args.get("group"))
 
     location = "WAREHOUSE"
