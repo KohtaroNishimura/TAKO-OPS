@@ -1957,29 +1957,47 @@ def _get_manual_items_for_weekly(db, batch_config_id: int):
 def stocktake_weekly_new():
     db = get_db()
 
-    qty_rows = db.execute(
-        """
-        SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
-        FROM inventory_tx
-        GROUP BY item_id
-        """
-    ).fetchall()
-    current_qty = {row["item_id"]: float(row["qty"] or 0) for row in qty_rows}
-
+    location = "WAREHOUSE"
     items = db.execute(
         """
-        SELECT item_id, name, unit_base, reorder_point, ref_unit_price, cost_group, is_active
+        SELECT item_id, name, unit_base, ref_unit_price, cost_group
         FROM items
         WHERE is_active = 1
         ORDER BY name
         """
     ).fetchall()
 
+    cur_rows = db.execute(
+        """
+        SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
+        FROM inventory_tx
+        WHERE location = ?
+        GROUP BY item_id
+        """,
+        (location,),
+    ).fetchall()
+    current_map = {row["item_id"]: float(row["qty"] or 0) for row in cur_rows}
+
     if request.method == "POST":
-        taken_at = request.form.get("taken_at")
+        taken_at = (request.form.get("taken_at") or "").strip()
         if not taken_at:
             taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        note = request.form.get("note", "").strip()
+        note = (request.form.get("note") or "").strip()
+        month_start, month_end = month_range_for_datetime(taken_at)
+
+        prev_monthly = db.execute(
+            """
+            SELECT stocktake_id
+            FROM stocktakes
+            WHERE scope = 'MONTHLY'
+              AND location = ?
+              AND datetime(taken_at) < datetime(?)
+            ORDER BY datetime(taken_at) DESC, stocktake_id DESC
+            LIMIT 1
+            """,
+            (location, taken_at),
+        ).fetchone()
+        is_initial_stocktake = prev_monthly is None
 
         try:
             db.execute("BEGIN")
@@ -1987,82 +2005,98 @@ def stocktake_weekly_new():
             cur = db.execute(
                 """
                 INSERT INTO stocktakes (taken_at, scope, location, note)
-                VALUES (?, 'WEEKLY', 'STORE', ?)
+                VALUES (?, 'WEEKLY', ?, ?)
                 """,
-                (taken_at, note),
+                (taken_at, location, note),
             )
             stocktake_id = cur.lastrowid
 
-            eps = 1e-9
-            adjusted_count = 0
+            adjust_count = 0
 
             for it in items:
                 item_id = it["item_id"]
-                field = f"counted_{item_id}"
-                if field not in request.form:
-                    continue
+                unit_base = it["unit_base"]
+                raw = (request.form.get(f"counted_{item_id}") or "").strip()
+                if raw == "":
+                    counted = current_map.get(item_id, 0.0)
+                else:
+                    try:
+                        counted = float(raw)
+                    except ValueError:
+                        counted = current_map.get(item_id, 0.0)
 
-                raw = (request.form.get(field) or "").strip()
-                counted = float(raw) if raw != "" else 0.0
+                if unit_base == "pcs":
+                    counted = float(int(round(counted)))
 
-                before = float(current_qty.get(item_id, 0.0))
-                delta = counted - before
-
-                unit_cost = float(it["ref_unit_price"] or 0.0)
+                if is_initial_stocktake:
+                    unit_cost = calc_initial_stocktake_unit_cost(db, item_id, taken_at)
+                else:
+                    unit_cost, _no_qty, _used_ref = calc_monthly_weighted_unit_cost(
+                        db, item_id, month_start, month_end, location=location
+                    )
                 line_amount = counted * unit_cost
                 db.execute(
                     """
                     INSERT INTO stocktake_lines (
-                        stocktake_id, item_id, counted_qty, unit_cost, line_amount
+                      stocktake_id, item_id, counted_qty, unit_cost, line_amount
                     )
                     VALUES (?, ?, ?, ?, ?)
                     """,
                     (stocktake_id, item_id, counted, unit_cost, line_amount),
                 )
 
-                if abs(delta) > eps:
-                    db.execute(
-                        """
-                        INSERT INTO inventory_tx (
-                            happened_at, item_id, qty_delta, tx_type, location, ref_type, ref_id, note
-                        )
-                        VALUES (?, ?, ?, 'ADJUST', 'STORE', 'STOCKTAKE', ?, ?)
-                        """,
-                        (taken_at, item_id, delta, stocktake_id, "週次棚卸の差分調整"),
-                    )
-                    adjusted_count += 1
+                current = current_map.get(item_id, 0.0)
+                delta = counted - current
+                if abs(delta) < 1e-9:
+                    continue
+
+                db.execute(
+                    """
+                    INSERT INTO inventory_tx
+                      (happened_at, item_id, qty_delta, tx_type, location, ref_type, ref_id, note)
+                    VALUES
+                      (?, ?, ?, 'ADJUST', ?, 'STOCKTAKE', ?, ?)
+                    """,
+                    (
+                        taken_at,
+                        item_id,
+                        delta,
+                        location,
+                        stocktake_id,
+                        "WEEKLY棚卸差分（ADJUST）",
+                    ),
+                )
+                adjust_count += 1
 
             db.execute("COMMIT")
-            flash(
-                f"週次棚卸を登録しました。差分 {adjusted_count}件 をADJUST反映しました。",
-                "success",
-            )
-            return redirect(url_for("stocktakes_list"))
+            flash(f"週次棚卸を登録しました（ADJUST反映: {adjust_count}件）", "success")
+            return redirect(url_for("stocktake_detail", stocktake_id=stocktake_id))
 
         except Exception as e:
             db.execute("ROLLBACK")
             flash(f"週次棚卸の保存に失敗しました: {e}", "error")
             return redirect(url_for("stocktake_weekly_new"))
 
-    view_items = []
+    rows = []
     for it in items:
-        item_id = it["item_id"]
-        view_items.append(
+        cur = current_map.get(it["item_id"], 0.0)
+        rows.append(
             {
-                "item_id": item_id,
+                "item_id": it["item_id"],
                 "name": it["name"],
                 "unit_base": it["unit_base"],
-                "reorder_point": it["reorder_point"],
+                "ref_unit_price": float(it["ref_unit_price"] or 0),
                 "cost_group": it["cost_group"],
-                "ref_unit_price": it["ref_unit_price"],
-                "current_qty": float(current_qty.get(item_id, 0.0)),
+                "current_qty": cur,
+                "counted_default": cur,
             }
         )
 
     default_taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return render_template(
-        "stocktake_weekly_new.html",
-        items=view_items,
+        "stocktake_new.html",
+        mode="weekly",
+        rows=rows,
         default_taken_at=default_taken_at,
     )
 
@@ -2074,59 +2108,27 @@ def stocktake_weekly_new():
 def stocktake_monthly_new():
     db = get_db()
 
-    # FOOD(38品目)だけ数える運用が基本。必要なら ?group=ALL で全表示
-    group = (request.args.get("group") or "FOOD").upper()
-    if group not in ("FOOD", "ALL"):
-        group = "FOOD"
-
-    # 月次棚卸は倉庫へ寄せる前提
     location = "WAREHOUSE"
+    items = db.execute(
+        """
+        SELECT item_id, name, unit_base, ref_unit_price, cost_group
+        FROM items
+        WHERE is_active = 1
+        ORDER BY name ASC
+        """
+    ).fetchall()
 
-    # 入力は日付だけ（デフォルト今日）
-    taken_date = (request.args.get("taken_date") or date.today().isoformat()).strip()
-
-    # 対象アイテム
-    if group == "FOOD":
-        items = db.execute(
-            """
-            SELECT item_id, name, unit_base, ref_unit_price
-            FROM items
-            WHERE is_active = 1 AND cost_group = 'FOOD'
-            ORDER BY name ASC
-            """
-        ).fetchall()
-    else:
-        items = db.execute(
-            """
-            SELECT item_id, name, unit_base, ref_unit_price
-            FROM items
-            WHERE is_active = 1
-            ORDER BY name ASC
-            """
-        ).fetchall()
-
-    # 現在庫（inventory_tx の合計）
-    if location == "ALL":
-        cur_rows = db.execute(
-            """
-            SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
-            FROM inventory_tx
-            GROUP BY item_id
-            """
-        ).fetchall()
-    else:
-        cur_rows = db.execute(
-            """
-            SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
-            FROM inventory_tx
-            WHERE location = ?
-            GROUP BY item_id
-            """,
-            (location,),
-        ).fetchall()
+    cur_rows = db.execute(
+        """
+        SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
+        FROM inventory_tx
+        WHERE location = ?
+        GROUP BY item_id
+        """,
+        (location,),
+    ).fetchall()
     current_map = {r["item_id"]: float(r["qty"] or 0) for r in cur_rows}
 
-    # 画面表示用：現在庫を埋めた行リスト
     rows = []
     for it in items:
         cur = current_map.get(it["item_id"], 0.0)
@@ -2136,17 +2138,18 @@ def stocktake_monthly_new():
                 "name": it["name"],
                 "unit_base": it["unit_base"],
                 "ref_unit_price": float(it["ref_unit_price"] or 0),
+                "cost_group": it["cost_group"],
                 "current_qty": cur,
-                # 入力の初期値を「現在庫」にして、ユーザーは差分があれば直すだけ
                 "counted_default": cur,
             }
         )
 
+    default_taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return render_template(
-        "stocktake_monthly_new.html",
+        "stocktake_new.html",
+        mode="monthly",
         rows=rows,
-        taken_date=taken_date,
-        group=group,
+        default_taken_at=default_taken_at,
     )
 
 
@@ -2154,60 +2157,31 @@ def stocktake_monthly_new():
 def stocktake_monthly_create():
     db = get_db()
 
-    group = (request.form.get("group") or "FOOD").upper()
-    if group not in ("FOOD", "ALL"):
-        group = "FOOD"
-
-    # 月次棚卸は倉庫へ寄せる前提
     location = "WAREHOUSE"
 
-    taken_date = (request.form.get("taken_date") or "").strip()
-    if not taken_date:
-        taken_date = date.today().isoformat()
-
-    # DBには日時文字列で保存（固定時刻でOK）
-    taken_at = f"{taken_date} 09:00:00"
+    taken_at = (request.form.get("taken_at") or "").strip()
+    if not taken_at:
+        taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     note = (request.form.get("note") or "").strip()
 
-    # 対象アイテムをDBから取り直す（GET時点から在庫が変わってもOKにするため）
-    if group == "FOOD":
-        items = db.execute(
-            """
-            SELECT item_id, name, unit_base
-            FROM items
-            WHERE is_active = 1 AND cost_group = 'FOOD'
-            ORDER BY name ASC
-            """
-        ).fetchall()
-    else:
-        items = db.execute(
-            """
-            SELECT item_id, name, unit_base
-            FROM items
-            WHERE is_active = 1
-            ORDER BY name ASC
-            """
-        ).fetchall()
+    items = db.execute(
+        """
+        SELECT item_id, name, unit_base
+        FROM items
+        WHERE is_active = 1
+        ORDER BY name ASC
+        """
+    ).fetchall()
 
-    # 現在庫（POST時点）
-    if location == "ALL":
-        cur_rows = db.execute(
-            """
-            SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
-            FROM inventory_tx
-            GROUP BY item_id
-            """
-        ).fetchall()
-    else:
-        cur_rows = db.execute(
-            """
-            SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
-            FROM inventory_tx
-            WHERE location = ?
-            GROUP BY item_id
-            """,
-            (location,),
-        ).fetchall()
+    cur_rows = db.execute(
+        """
+        SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
+        FROM inventory_tx
+        WHERE location = ?
+        GROUP BY item_id
+        """,
+        (location,),
+    ).fetchall()
     current_map = {r["item_id"]: float(r["qty"] or 0) for r in cur_rows}
     month_start, month_end = month_range_for_datetime(taken_at)
 
