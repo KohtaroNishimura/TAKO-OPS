@@ -3263,14 +3263,15 @@ def monthly_food_cost():
     used_ref_count = int(purchases_row["used_ref_count"] or 0)
 
     # 売上（daily_reports.sales_amount の月合計）
+    # 棚卸時刻による境界ブレを避けるため、月初/月末の範囲で集計する
     sales = db.execute(
         """
         SELECT COALESCE(SUM(sales_amount), 0) AS v
         FROM daily_reports
-        WHERE datetime(report_date) >= datetime(?)
-          AND datetime(report_date) < datetime(?)
+        WHERE date(report_date) >= date(?)
+          AND date(report_date) < date(?)
         """,
-        (effective_start, effective_end),
+        (month_start, month_end),
     ).fetchone()["v"]
 
     # 当月仕入の内訳（表示用）
