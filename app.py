@@ -3,7 +3,8 @@ from __future__ import annotations
 import sqlite3
 from itertools import groupby
 import math
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 from flask import Flask, redirect, render_template, request, url_for, flash, abort
 
 from db import close_db, commit_and_sync, get_db
@@ -938,7 +939,7 @@ def purchase_delete(purchase_id: int):
 # -----------------------------
 def _to_datetime_seconds(dt_local: str | None) -> str | None:
     """
-    HTML datetime-local: 'YYYY-MM-DDTHH:MM' -> 'YYYY-MM-DD HH:MM:00'
+    HTML datetime-local (JST): 'YYYY-MM-DDTHH:MM' -> UTC 'YYYY-MM-DD HH:MM:00'
     """
     if not dt_local:
         return None
@@ -949,7 +950,9 @@ def _to_datetime_seconds(dt_local: str | None) -> str | None:
     # 秒がない場合は補完
     if len(s) == 16:  # 'YYYY-MM-DD HH:MM'
         s = s + ":00"
-    return s
+    dt = datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
+    dt_jst = dt.replace(tzinfo=ZoneInfo("Asia/Tokyo"))
+    return dt_jst.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def normalize_stocktake_mode(raw: str | None, default: str) -> str:
@@ -1801,7 +1804,7 @@ def stocktakes_list():
         SELECT
           st.stocktake_id,
           st.taken_at,
-          datetime(st.taken_at, '+9 hours') AS taken_at_display,
+          datetime(substr(replace(st.taken_at, 'T', ' '), 1, 19), '+9 hours') AS taken_at_display,
           st.scope,
           st.location,
           st.note,
@@ -1828,7 +1831,9 @@ def stocktake_create():
     db = get_db()
 
     taken_at_local = (request.form.get("taken_at") or "").strip()
-    taken_at = _to_datetime_seconds(taken_at_local)  # 'YYYY-MM-DD HH:MM:00' or None
+    taken_at = _to_datetime_seconds(taken_at_local)  # UTC 'YYYY-MM-DD HH:MM:00' or None
+    if not taken_at:
+        taken_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     scope = "MONTHLY"  # 今回は月次固定（必要ならフォーム化できます）
     # 月次棚卸は倉庫での実測を前提
     location = "WAREHOUSE"
@@ -1905,22 +1910,13 @@ def stocktake_create():
     try:
         # 明示BEGINは使わず、まとめてcommit/rollback
         # stocktakes（ヘッダ）
-        if taken_at:
-            cur = db.execute(
-                """
-                INSERT INTO stocktakes (taken_at, scope, location, note)
-                VALUES (?, ?, ?, ?)
-                """,
-                (taken_at, scope, location, note),
-            )
-        else:
-            cur = db.execute(
-                """
-                INSERT INTO stocktakes (taken_at, scope, location, note)
-                VALUES (datetime('now'), ?, ?, ?)
-                """,
-                (scope, location, note),
-            )
+        cur = db.execute(
+            """
+            INSERT INTO stocktakes (taken_at, scope, location, note)
+            VALUES (?, ?, ?, ?)
+            """,
+            (taken_at, scope, location, note),
+        )
 
         stocktake_id = cur.lastrowid
 
@@ -1975,7 +1971,7 @@ def stocktake_detail(stocktake_id: int):
         SELECT
           stocktake_id,
           taken_at,
-          datetime(taken_at, '+9 hours') AS taken_at_display,
+          datetime(substr(replace(taken_at, 'T', ' '), 1, 19), '+9 hours') AS taken_at_display,
           scope,
           location,
           note
@@ -2238,7 +2234,9 @@ def stocktake_weekly_new():
             }
         )
 
-    default_taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    default_taken_at = datetime.now(ZoneInfo("Asia/Tokyo")).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
     return render_template(
         "stocktake_new.html",
         mode=mode,
@@ -2285,7 +2283,9 @@ def stocktake_monthly_new():
             }
         )
 
-    default_taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    default_taken_at = datetime.now(ZoneInfo("Asia/Tokyo")).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
     return render_template(
         "stocktake_new.html",
         mode=mode,
@@ -2306,7 +2306,13 @@ def stocktake_edit_form(stocktake_id: int):
 
     header = db.execute(
         """
-        SELECT stocktake_id, taken_at, scope, location, note
+        SELECT
+          stocktake_id,
+          taken_at,
+          datetime(substr(replace(taken_at, 'T', ' '), 1, 19), '+9 hours') AS taken_at_display,
+          scope,
+          location,
+          note
         FROM stocktakes
         WHERE stocktake_id = ?
         """,
@@ -2360,7 +2366,7 @@ def stocktake_edit_form(stocktake_id: int):
         mode=mode,
         group=group,
         rows=rows,
-        default_taken_at=header["taken_at"],
+        default_taken_at=header["taken_at_display"] or header["taken_at"],
         form_action=url_for("stocktake_update", stocktake_id=stocktake_id),
         is_edit=True,
         stocktake_id=stocktake_id,
@@ -2377,7 +2383,7 @@ def stocktake_create_unified():
 
     taken_at = _to_datetime_seconds(request.form.get("taken_at"))
     if not taken_at:
-        taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        taken_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     note = (request.form.get("note") or "").strip()
 
     items = fetch_items_for_stocktake_group(group)
@@ -2611,6 +2617,8 @@ def stocktake_update(stocktake_id: int):
     group = normalize_stocktake_group(request.form.get("group"))
 
     taken_at = _to_datetime_seconds(request.form.get("taken_at"))
+    if not taken_at:
+        taken_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     if not taken_at:
         taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     note = (request.form.get("note") or "").strip()
