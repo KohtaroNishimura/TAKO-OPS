@@ -71,10 +71,7 @@
         <thead>
           <tr>
             <th>材料</th>
-            {% if show_group_column %}
-              <th class="hidden sm:table-cell">区分</th>
-            {% endif %}
-            <th class="hidden sm:table-cell">現在在庫</th>
+            <th class="hidden sm:table-cell">現在残量</th>
             <th>棚卸数（counted_qty）</th>
             <th class="muted hidden sm:table-cell">単位</th>
           </tr>
@@ -85,15 +82,9 @@
             <td>
               <div class="font-medium text-slate-900">{{ r.name }}</div>
               <div class="muted sm:hidden">
-                {% if show_group_column %}
-                  {{ r.cost_group }} /
-                {% endif %}
-                現在: {{ '%.3f'|format(r.current_qty) }} {{ r.unit_base }}
+                現在残量: {{ '%.3f'|format(r.current_qty) }} {{ r.unit_base }}
               </div>
             </td>
-            {% if show_group_column %}
-              <td class="hidden sm:table-cell"><span class="pill">{{ r.cost_group }}</span></td>
-            {% endif %}
             <td class="hidden sm:table-cell">{{ '%.3f'|format(r.current_qty) }}</td>
             <td class="w-40 sm:w-[220px]">
               <input
