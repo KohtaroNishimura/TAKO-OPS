@@ -2187,7 +2187,7 @@ def stocktake_create_unified():
     mode = normalize_stocktake_mode(request.form.get("mode"), "monthly")
     group = normalize_stocktake_group(request.form.get("group"))
 
-    taken_at = (request.form.get("taken_at") or "").strip()
+    taken_at = _to_datetime_seconds(request.form.get("taken_at"))
     if not taken_at:
         taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     note = (request.form.get("note") or "").strip()
