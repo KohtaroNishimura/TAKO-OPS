@@ -5,8 +5,23 @@
     {{ "週次棚卸（全材料）" if mode=="weekly" else "月次棚卸（全材料）" }}
   </h2>
 
-  <div class="muted">
-    週末の出汁/生地ロスなど、実在庫に合わせて調整します。保存すると差分が inventory_tx に ADJUST 反映されます。
+  <div class="mt-2 flex flex-wrap gap-2 text-sm font-semibold">
+    <a
+      class="rounded-full border px-3 py-1.5 {{ 'border-slate-900 bg-slate-900 text-white' if mode=='weekly' else 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' }}"
+      href="{{ url_for('stocktake_weekly_new') }}"
+    >週次</a>
+    <a
+      class="rounded-full border px-3 py-1.5 {{ 'border-slate-900 bg-slate-900 text-white' if mode=='monthly' else 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' }}"
+      href="{{ url_for('stocktake_monthly_new') }}"
+    >月次</a>
+  </div>
+
+  <div class="muted mt-2">
+    {% if mode=="weekly" %}
+      週末の出汁/生地ロスなど、実在庫に合わせて調整します。保存すると差分が inventory_tx に ADJUST 反映されます。
+    {% else %}
+      月末に倉庫へ寄せて棚卸します。保存すると差分が inventory_tx に ADJUST 反映されます。
+    {% endif %}
   </div>
 
   <form method="post" action="{{ url_for('stocktake_weekly_new') if mode=='weekly' else url_for('stocktake_monthly_create') }}">
