@@ -2,51 +2,59 @@
 {% block content %}
 
 <div class="card">
-  <h2>週次棚卸（手動管理のみ）</h2>
-  <p class="muted">
-    対象：レシピ設定で auto_consume がOFF（=0）の材料だけ。<br>
-    入力した残量で在庫を上書きし、差分は inventory_tx に ADJUST 反映します。<br>
-    保存後は買い物リストで「発注目安未満」を確認してください。
-  </p>
+  <h2>週次棚卸（全材料）</h2>
+  <div class="muted">
+    週末の出汁/生地ロスなど、実在庫に合わせて調整します。保存すると差分が inventory_tx に ADJUST 反映されます。
+  </div>
 
   <form method="post">
-    <label>メモ（任意）</label>
-    <input name="note" placeholder="例：日曜夜に棚卸 / まとめ買い後 など">
+    <div class="row">
+      <div>
+        <label>棚卸日時</label>
+        <input name="taken_at" value="{{ default_taken_at }}" placeholder="YYYY-MM-DD HH:MM:SS">
+        <div class="muted">空なら現在時刻になります</div>
+      </div>
+      <div>
+        <label>メモ</label>
+        <input name="note" placeholder="例：週末ロス調整 / 棚卸など">
+      </div>
+    </div>
 
-    <table style="margin-top:12px;">
-      <thead>
-        <tr>
-          <th>材料</th>
-          <th>単位</th>
-          <th>理論在庫</th>
-          <th>発注目安</th>
-          <th>今回の実在庫（入力）</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for it in items %}
-        <tr>
-          <td>{{ it["name"] }}</td>
-          <td>{{ it["unit_base"] }}</td>
-          <td>{{ it["theoretical_qty"] }}</td>
-          <td>{{ it["reorder_point"] }}</td>
-          <td style="min-width:220px;">
-            {# 前回週次棚卸があればそれを初期値、無ければ理論在庫を初期値に #}
-            <input
-              name="counted_{{ it['item_id'] }}"
-              value="{% if it['last_weekly_qty'] is not none %}{{ it['last_weekly_qty'] }}{% else %}{{ it['theoretical_qty'] }}{% endif %}"
-              {% if it["unit_base"] == "pcs" %}step="1"{% else %}step="0.01"{% endif %}
-              type="number"
-            >
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="card" style="margin-top:14px;">
+      <table>
+        <thead>
+          <tr>
+            <th>材料</th>
+            <th>区分</th>
+            <th>現在在庫</th>
+            <th>棚卸数（counted_qty）</th>
+            <th class="muted">単位</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in items %}
+          <tr>
+            <td>{{ it.name }}</td>
+            <td><span class="pill">{{ it.cost_group }}</span></td>
+            <td>{{ '%.3f'|format(it.current_qty) }}</td>
+            <td style="width:220px;">
+              <input
+                type="number"
+                step="0.001"
+                name="counted_{{ it.item_id }}"
+                value="{{ '%.3f'|format(it.current_qty) }}"
+              >
+            </td>
+            <td class="muted">{{ it.unit_base }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
 
-    <div class="actions">
-      <button type="submit">保存して在庫へ反映 → 買い物リストへ</button>
-      <a class="button-link" href="{{ url_for('stocktakes_list') }}">棚卸一覧へ</a>
+      <div class="actions">
+        <button type="submit">保存して差分を反映</button>
+        <a class="button-link" href="{{ url_for('stocktakes_list') }}">戻る</a>
+      </div>
     </div>
   </form>
 </div>

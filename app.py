@@ -1953,92 +1953,118 @@ def _get_manual_items_for_weekly(db, batch_config_id: int):
     ).fetchall()
 
 
-@app.get("/stocktakes/weekly/new")
+@app.route("/stocktakes/weekly/new", methods=["GET", "POST"])
 def stocktake_weekly_new():
     db = get_db()
-    batch_config_id = _get_active_batch_config_id(db)
-    if not batch_config_id:
-        flash(
-            "アクティブなBATCH_CONFIGがありません。先に batch_config を作成してください。",
-            "error",
-        )
-        return redirect(url_for("recipe_batch_edit"))
 
-    items = _get_manual_items_for_weekly(db, batch_config_id)
-    return render_template("stocktake_weekly_new.html", items=items)
+    qty_rows = db.execute(
+        """
+        SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
+        FROM inventory_tx
+        GROUP BY item_id
+        """
+    ).fetchall()
+    current_qty = {row["item_id"]: float(row["qty"] or 0) for row in qty_rows}
 
+    items = db.execute(
+        """
+        SELECT item_id, name, unit_base, reorder_point, ref_unit_price, cost_group, is_active
+        FROM items
+        WHERE is_active = 1
+        ORDER BY name
+        """
+    ).fetchall()
 
-@app.post("/stocktakes/weekly/new")
-def stocktake_weekly_create():
-    db = get_db()
-    batch_config_id = _get_active_batch_config_id(db)
-    if not batch_config_id:
-        flash("アクティブなBATCH_CONFIGがありません。", "error")
-        return redirect(url_for("recipe_batch_edit"))
+    if request.method == "POST":
+        taken_at = request.form.get("taken_at")
+        if not taken_at:
+            taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        note = request.form.get("note", "").strip()
 
-    items = _get_manual_items_for_weekly(db, batch_config_id)
-    taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    note = (request.form.get("note") or "").strip()
+        try:
+            db.execute("BEGIN")
 
-    try:
-        db.execute("BEGIN")
-
-        # stocktakes 作成（scope=WEEKLY）
-        cur = db.execute(
-            """
-            INSERT INTO stocktakes (taken_at, scope, location, note)
-            VALUES (?, 'WEEKLY', 'WAREHOUSE', ?)
-            """,
-            (taken_at, note),
-        )
-        stocktake_id = cur.lastrowid
-
-        # 各行を保存＆差分をADJUST反映
-        for it in items:
-            item_id = it["item_id"]
-            raw = (request.form.get(f"counted_{item_id}") or "").strip()
-            if raw == "":
-                # 未入力はスキップ（=棚卸ししなかった扱い）
-                continue
-
-            try:
-                counted_qty = float(raw)
-            except ValueError:
-                continue
-
-            db.execute(
+            cur = db.execute(
                 """
-                INSERT INTO stocktake_lines (stocktake_id, item_id, counted_qty)
-                VALUES (?, ?, ?)
+                INSERT INTO stocktakes (taken_at, scope, location, note)
+                VALUES (?, 'WEEKLY', 'STORE', ?)
                 """,
-                (stocktake_id, item_id, counted_qty),
+                (taken_at, note),
             )
+            stocktake_id = cur.lastrowid
 
-            theoretical_qty = float(it["theoretical_qty"] or 0)
-            diff = counted_qty - theoretical_qty
+            eps = 1e-9
+            adjusted_count = 0
 
-            # 差分がある場合のみADJUSTを入れる
-            if abs(diff) > 1e-9:
+            for it in items:
+                item_id = it["item_id"]
+                field = f"counted_{item_id}"
+                if field not in request.form:
+                    continue
+
+                raw = (request.form.get(field) or "").strip()
+                counted = float(raw) if raw != "" else 0.0
+
+                before = float(current_qty.get(item_id, 0.0))
+                delta = counted - before
+
+                unit_cost = float(it["ref_unit_price"] or 0.0)
+                line_amount = counted * unit_cost
                 db.execute(
                     """
-                    INSERT INTO inventory_tx
-                      (happened_at, item_id, qty_delta, tx_type, location, ref_type, ref_id, note)
-                    VALUES
-                      (?, ?, ?, 'ADJUST', 'WAREHOUSE', 'STOCKTAKE', ?, 'WEEKLY STOCKTAKE')
+                    INSERT INTO stocktake_lines (
+                        stocktake_id, item_id, counted_qty, unit_cost, line_amount
+                    )
+                    VALUES (?, ?, ?, ?, ?)
                     """,
-                    (taken_at, item_id, diff, stocktake_id),
+                    (stocktake_id, item_id, counted, unit_cost, line_amount),
                 )
 
-        db.execute("COMMIT")
-        flash("週次棚卸を保存しました（差分は在庫に反映済み）", "success")
+                if abs(delta) > eps:
+                    db.execute(
+                        """
+                        INSERT INTO inventory_tx (
+                            happened_at, item_id, qty_delta, tx_type, location, ref_type, ref_id, note
+                        )
+                        VALUES (?, ?, ?, 'ADJUST', 'STORE', 'STOCKTAKE', ?, ?)
+                        """,
+                        (taken_at, item_id, delta, stocktake_id, "週次棚卸の差分調整"),
+                    )
+                    adjusted_count += 1
 
-        # 保存後は「買い物リスト」に飛ぶ運用が楽
-        return redirect(url_for("shopping_list"))
+            db.execute("COMMIT")
+            flash(
+                f"週次棚卸を登録しました。差分 {adjusted_count}件 をADJUST反映しました。",
+                "success",
+            )
+            return redirect(url_for("stocktakes_list"))
 
-    except Exception as e:
-        db.execute("ROLLBACK")
-        flash(f"週次棚卸の保存に失敗しました: {e}", "error")
-        return redirect(url_for("stocktake_weekly_new"))
+        except Exception as e:
+            db.execute("ROLLBACK")
+            flash(f"週次棚卸の保存に失敗しました: {e}", "error")
+            return redirect(url_for("stocktake_weekly_new"))
+
+    view_items = []
+    for it in items:
+        item_id = it["item_id"]
+        view_items.append(
+            {
+                "item_id": item_id,
+                "name": it["name"],
+                "unit_base": it["unit_base"],
+                "reorder_point": it["reorder_point"],
+                "cost_group": it["cost_group"],
+                "ref_unit_price": it["ref_unit_price"],
+                "current_qty": float(current_qty.get(item_id, 0.0)),
+            }
+        )
+
+    default_taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return render_template(
+        "stocktake_weekly_new.html",
+        items=view_items,
+        default_taken_at=default_taken_at,
+    )
 
 
 # -----------------------------
