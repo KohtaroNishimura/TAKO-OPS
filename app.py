@@ -2125,6 +2125,11 @@ def stocktake_weekly_new():
             cost_map = build_monthly_weighted_unit_cost_map(
                 db, items, month_start, month_end, location=location
             )
+        cost_map = {}
+        if not is_initial_stocktake:
+            cost_map = build_monthly_weighted_unit_cost_map(
+                db, items, month_start, month_end, location=location
+            )
 
         try:
             db.execute("BEGIN")
@@ -2359,8 +2364,8 @@ def stocktake_create_unified():
                 if is_initial_stocktake:
                     unit_cost = calc_initial_stocktake_unit_cost(db, item_id, taken_at)
                 else:
-                    unit_cost, _no_qty, _used_ref = calc_monthly_weighted_unit_cost(
-                        db, item_id, month_start, month_end, location=location
+                    unit_cost, _no_qty, _used_ref = cost_map.get(
+                        item_id, (float(it["ref_unit_price"] or 0), True, False)
                     )
                 line_amount = counted * unit_cost
                 db.execute(
