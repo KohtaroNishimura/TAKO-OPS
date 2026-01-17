@@ -1173,6 +1173,107 @@ def calc_monthly_weighted_unit_cost(
     return avg_unit_cost, False, (used_ref_opening or used_ref_purchase)
 
 
+def build_monthly_weighted_unit_cost_map(
+    db, items: list[sqlite3.Row], month_start: str, month_end: str, location: str | None = None
+) -> dict[int, tuple[float, bool, bool]]:
+    if not items:
+        return {}
+
+    item_ids = [it["item_id"] for it in items]
+    ref_map = {it["item_id"]: float(it["ref_unit_price"] or 0) for it in items}
+
+    opening_qty_map: dict[int, float] = {}
+    opening_amount_map: dict[int, float] = {}
+    used_ref_opening_map: dict[int, bool] = {}
+
+    opening = get_opening_monthly_stocktake_id(db, month_start, location=location)
+    if opening:
+        rows = db.execute(
+            """
+            SELECT item_id, counted_qty, unit_cost, line_amount
+            FROM stocktake_lines
+            WHERE stocktake_id = ?
+            """,
+            (opening["stocktake_id"],),
+        ).fetchall()
+        for r in rows:
+            item_id = r["item_id"]
+            counted_qty = float(r["counted_qty"] or 0)
+            opening_qty_map[item_id] = counted_qty
+
+            line_amount = r["line_amount"]
+            if line_amount is not None:
+                opening_amount_map[item_id] = float(line_amount or 0)
+                continue
+
+            unit_cost = r["unit_cost"]
+            used_ref_opening_map[item_id] = True
+            opening_amount_map[item_id] = counted_qty * float(
+                unit_cost if unit_cost is not None else ref_map.get(item_id, 0.0)
+            )
+
+    placeholders = ",".join(["?"] * len(item_ids))
+    purchase_rows = db.execute(
+        f"""
+        SELECT pl.item_id, pl.qty, pl.unit_price, pl.line_amount
+        FROM purchase_lines pl
+        JOIN purchases p ON p.purchase_id = pl.purchase_id
+        WHERE pl.item_id IN ({placeholders})
+          AND p.purchased_at >= ?
+          AND p.purchased_at < ?
+        """,
+        (*item_ids, month_start, month_end),
+    ).fetchall()
+
+    purchased_qty_map: dict[int, float] = {}
+    purchased_amount_map: dict[int, float] = {}
+    used_ref_purchase_map: dict[int, bool] = {}
+
+    for r in purchase_rows:
+        item_id = r["item_id"]
+        qty = float(r["qty"] or 0)
+        if qty <= 0:
+            continue
+
+        purchased_qty_map[item_id] = purchased_qty_map.get(item_id, 0.0) + qty
+
+        if r["line_amount"] is not None:
+            purchased_amount_map[item_id] = purchased_amount_map.get(item_id, 0.0) + float(
+                r["line_amount"] or 0
+            )
+            continue
+
+        unit_price = r["unit_price"]
+        if unit_price is None:
+            used_ref_purchase_map[item_id] = True
+            purchased_amount_map[item_id] = purchased_amount_map.get(item_id, 0.0) + qty * float(
+                ref_map.get(item_id, 0.0)
+            )
+        else:
+            purchased_amount_map[item_id] = purchased_amount_map.get(item_id, 0.0) + qty * float(
+                unit_price
+            )
+
+    cost_map: dict[int, tuple[float, bool, bool]] = {}
+    for item_id in item_ids:
+        opening_qty = opening_qty_map.get(item_id, 0.0)
+        opening_amount = opening_amount_map.get(item_id, 0.0)
+        purchased_qty = purchased_qty_map.get(item_id, 0.0)
+        purchased_amount = purchased_amount_map.get(item_id, 0.0)
+
+        denom = opening_qty + purchased_qty
+        used_ref = used_ref_opening_map.get(item_id, False) or used_ref_purchase_map.get(
+            item_id, False
+        )
+        if denom <= 0:
+            cost_map[item_id] = (ref_map.get(item_id, 0.0), True, used_ref)
+        else:
+            avg_unit_cost = (opening_amount + purchased_amount) / denom
+            cost_map[item_id] = (avg_unit_cost, False, used_ref)
+
+    return cost_map
+
+
 def calc_initial_stocktake_unit_cost(db, item_id: int, taken_at: str) -> float:
     """
     初回棚卸用: 棚卸日までの仕入実績平均単価を計算。
@@ -2019,6 +2120,11 @@ def stocktake_weekly_new():
             (location, taken_at),
         ).fetchone()
         is_initial_stocktake = prev_monthly is None
+        cost_map = {}
+        if not is_initial_stocktake:
+            cost_map = build_monthly_weighted_unit_cost_map(
+                db, items, month_start, month_end, location=location
+            )
 
         try:
             db.execute("BEGIN")
@@ -2052,8 +2158,8 @@ def stocktake_weekly_new():
                 if is_initial_stocktake:
                     unit_cost = calc_initial_stocktake_unit_cost(db, item_id, taken_at)
                 else:
-                    unit_cost, _no_qty, _used_ref = calc_monthly_weighted_unit_cost(
-                        db, item_id, month_start, month_end, location=location
+                    unit_cost, _no_qty, _used_ref = cost_map.get(
+                        item_id, (float(it["ref_unit_price"] or 0), True, False)
                     )
                 line_amount = counted * unit_cost
                 db.execute(
@@ -2313,6 +2419,11 @@ def stocktake_create_unified():
         (location, taken_at),
     ).fetchone()
     is_initial_stocktake = prev_monthly is None
+    cost_map = {}
+    if not is_initial_stocktake:
+        cost_map = build_monthly_weighted_unit_cost_map(
+            db, items, month_start, month_end, location=location
+        )
 
     try:
         db.execute("BEGIN")
@@ -2349,8 +2460,8 @@ def stocktake_create_unified():
             if is_initial_stocktake:
                 unit_cost = calc_initial_stocktake_unit_cost(db, item_id, taken_at)
             else:
-                unit_cost, _no_qty, _used_ref = calc_monthly_weighted_unit_cost(
-                    db, item_id, month_start, month_end, location=location
+                unit_cost, _no_qty, _used_ref = cost_map.get(
+                    item_id, (float(it["ref_unit_price"] or 0), True, False)
                 )
             line_amount = counted * unit_cost
             db.execute(
