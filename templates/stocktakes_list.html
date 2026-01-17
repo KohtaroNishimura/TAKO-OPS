@@ -17,6 +17,7 @@
           <th>区分</th>
           <th>行数</th>
           <th>メモ</th>
+          <th>操作</th>
         </tr>
       </thead>
       <tbody>
@@ -27,6 +28,12 @@
             <td>{{ st["scope"] }}</td>
             <td>{{ st["line_count"] }}</td>
             <td>{{ st["note"] or "" }}</td>
+            <td class="flex flex-wrap gap-2">
+              <a class="button-link" href="{{ url_for('stocktake_edit_form', stocktake_id=st['stocktake_id']) }}">編集</a>
+              <form method="post" action="{{ url_for('stocktake_delete', stocktake_id=st['stocktake_id']) }}" onsubmit="return confirm('棚卸を削除します。よろしいですか？');">
+                <button type="submit" class="button-link text-red-600">削除</button>
+              </form>
+            </td>
           </tr>
         {% else %}
           <tr><td colspan="6">まだ棚卸がありません。</td></tr>

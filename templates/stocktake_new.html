@@ -27,7 +27,7 @@
   <form
     id="stocktake-form"
     method="post"
-    action="{{ url_for('stocktake_create_unified') }}"
+    action="{{ form_action if form_action is defined else url_for('stocktake_create_unified') }}"
   >
     <div class="grid gap-3 sm:grid-cols-2">
       <div>
@@ -40,11 +40,15 @@
       </div>
       <div>
         <label>区分</label>
-        <select id="group-select" name="group">
+        <select id="group-select" name="group" {{ "disabled" if is_edit else "" }}>
           <option value="ALL" {{ "selected" if group=="ALL" else "" }}>全て</option>
           <option value="FOOD" {{ "selected" if group=="FOOD" else "" }}>食材（FOOD）</option>
           <option value="SUPPLIES" {{ "selected" if group=="SUPPLIES" else "" }}>消耗品（SUPPLIES）</option>
         </select>
+        {% if is_edit %}
+          <input type="hidden" name="group" value="{{ group }}">
+          <div class="muted">編集時は全材料で固定です</div>
+        {% endif %}
       </div>
     </div>
 
@@ -102,7 +106,7 @@
       </table>
 
       <div class="actions">
-        <button type="submit">保存して差分を反映</button>
+        <button type="submit">{{ "更新して差分を反映" if is_edit else "保存して差分を反映" }}</button>
         <a class="button-link" href="{{ url_for('stocktakes_list') }}">戻る</a>
       </div>
     </div>

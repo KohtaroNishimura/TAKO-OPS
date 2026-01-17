@@ -2084,7 +2084,7 @@ def stocktake_weekly_new():
     mode = normalize_stocktake_mode(request.args.get("mode"), "weekly")
     if request.method == "POST":
         mode = normalize_stocktake_mode(request.form.get("mode"), "weekly")
-    group = normalize_stocktake_group(request.args.get("group"))
+    group = "ALL"
     if request.method == "POST":
         group = normalize_stocktake_group(request.form.get("group"))
 
@@ -2236,7 +2236,6 @@ def stocktake_weekly_new():
         "stocktake_new.html",
         mode=mode,
         group=group,
-        show_group_column=(group == "ALL"),
         rows=rows,
         default_taken_at=default_taken_at,
     )
@@ -2284,7 +2283,6 @@ def stocktake_monthly_new():
         "stocktake_new.html",
         mode=mode,
         group=group,
-        show_group_column=(group == "ALL"),
         rows=rows,
         default_taken_at=default_taken_at,
     )
@@ -2293,6 +2291,73 @@ def stocktake_monthly_new():
 @app.post("/stocktakes/monthly")
 def stocktake_monthly_create():
     return stocktake_create_unified()
+
+
+@app.get("/stocktakes/<int:stocktake_id>/edit")
+def stocktake_edit_form(stocktake_id: int):
+    db = get_db()
+
+    header = db.execute(
+        """
+        SELECT stocktake_id, taken_at, scope, location, note
+        FROM stocktakes
+        WHERE stocktake_id = ?
+        """,
+        (stocktake_id,),
+    ).fetchone()
+    if header is None:
+        abort(404)
+
+    mode = normalize_stocktake_mode((header["scope"] or "").lower(), "monthly")
+    group = normalize_stocktake_group(request.args.get("group"))
+
+    items = fetch_items_for_stocktake_group(group)
+
+    cur_rows = db.execute(
+        """
+        SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
+        FROM inventory_tx
+        GROUP BY item_id
+        """
+    ).fetchall()
+    current_map = {r["item_id"]: float(r["qty"] or 0) for r in cur_rows}
+
+    line_rows = db.execute(
+        """
+        SELECT item_id, counted_qty
+        FROM stocktake_lines
+        WHERE stocktake_id = ?
+        """,
+        (stocktake_id,),
+    ).fetchall()
+    line_map = {r["item_id"]: float(r["counted_qty"] or 0) for r in line_rows}
+
+    rows = []
+    for it in items:
+        cur = current_map.get(it["item_id"], 0.0)
+        counted = line_map.get(it["item_id"], cur)
+        rows.append(
+            {
+                "item_id": it["item_id"],
+                "name": it["name"],
+                "unit_base": it["unit_base"],
+                "ref_unit_price": float(it["ref_unit_price"] or 0),
+                "cost_group": it["cost_group"],
+                "current_qty": cur,
+                "counted_default": counted,
+            }
+        )
+
+    return render_template(
+        "stocktake_new.html",
+        mode=mode,
+        group=group,
+        rows=rows,
+        default_taken_at=header["taken_at"],
+        form_action=url_for("stocktake_update", stocktake_id=stocktake_id),
+        is_edit=True,
+        stocktake_id=stocktake_id,
+    )
 
 
 @app.post("/stocktakes/create")
@@ -2520,6 +2585,162 @@ def stocktake_create_unified():
         db.execute("ROLLBACK")
         flash(f"棚卸登録に失敗しました: {e}", "error")
         return redirect(url_for("stocktake_monthly_new", group=group, mode=mode))
+
+
+@app.post("/stocktakes/<int:stocktake_id>/update")
+def stocktake_update(stocktake_id: int):
+    db = get_db()
+
+    header = db.execute(
+        "SELECT stocktake_id FROM stocktakes WHERE stocktake_id = ?",
+        (stocktake_id,),
+    ).fetchone()
+    if header is None:
+        abort(404)
+
+    location = "WAREHOUSE"
+    mode = normalize_stocktake_mode(request.form.get("mode"), "monthly")
+    scope = "WEEKLY" if mode == "weekly" else "MONTHLY"
+    group = normalize_stocktake_group(request.form.get("group"))
+
+    taken_at = _to_datetime_seconds(request.form.get("taken_at"))
+    if not taken_at:
+        taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    note = (request.form.get("note") or "").strip()
+
+    items = fetch_items_for_stocktake_group(group)
+    month_start, month_end = month_range_for_datetime(taken_at)
+
+    try:
+        db.execute("BEGIN")
+
+        db.execute(
+            """
+            UPDATE stocktakes
+            SET taken_at = ?, scope = ?, location = ?, note = ?
+            WHERE stocktake_id = ?
+            """,
+            (taken_at, scope, location, note, stocktake_id),
+        )
+
+        db.execute(
+            "DELETE FROM inventory_tx WHERE ref_type = 'STOCKTAKE' AND ref_id = ?",
+            (stocktake_id,),
+        )
+        db.execute("DELETE FROM stocktake_lines WHERE stocktake_id = ?", (stocktake_id,))
+
+        baseline_rows = db.execute(
+            """
+            SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
+            FROM inventory_tx
+            GROUP BY item_id
+            """
+        ).fetchall()
+        baseline_map = {r["item_id"]: float(r["qty"] or 0) for r in baseline_rows}
+
+        prev_monthly = db.execute(
+            """
+            SELECT stocktake_id
+            FROM stocktakes
+            WHERE scope = 'MONTHLY'
+              AND location = ?
+              AND datetime(taken_at) < datetime(?)
+              AND stocktake_id != ?
+            ORDER BY datetime(taken_at) DESC, stocktake_id DESC
+            LIMIT 1
+            """,
+            (location, taken_at, stocktake_id),
+        ).fetchone()
+        is_initial_stocktake = prev_monthly is None
+
+        cost_map = {}
+        if not is_initial_stocktake:
+            cost_map = build_monthly_weighted_unit_cost_map(
+                db, items, month_start, month_end, location=location
+            )
+
+        adjust_count = 0
+        for it in items:
+            item_id = it["item_id"]
+            unit_base = it["unit_base"]
+
+            raw = (request.form.get(f"counted_{item_id}") or "").strip()
+            if raw == "":
+                counted = baseline_map.get(item_id, 0.0)
+            else:
+                try:
+                    counted = float(raw)
+                except ValueError:
+                    counted = baseline_map.get(item_id, 0.0)
+
+            if unit_base == "pcs":
+                counted = float(int(round(counted)))
+
+            if is_initial_stocktake:
+                unit_cost = calc_initial_stocktake_unit_cost(db, item_id, taken_at)
+            else:
+                unit_cost, _no_qty, _used_ref = cost_map.get(
+                    item_id, (float(it["ref_unit_price"] or 0), True, False)
+                )
+            line_amount = counted * unit_cost
+            db.execute(
+                """
+                INSERT INTO stocktake_lines (
+                  stocktake_id, item_id, counted_qty, unit_cost, line_amount
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (stocktake_id, item_id, counted, unit_cost, line_amount),
+            )
+
+            baseline = baseline_map.get(item_id, 0.0)
+            delta = counted - baseline
+            if abs(delta) < 1e-9:
+                continue
+
+            note_label = "WEEKLY棚卸差分（ADJUST）" if scope == "WEEKLY" else "MONTHLY棚卸差分（ADJUST）"
+            db.execute(
+                """
+                INSERT INTO inventory_tx
+                  (happened_at, item_id, qty_delta, tx_type, location, ref_type, ref_id, note)
+                VALUES
+                  (?, ?, ?, 'ADJUST', ?, 'STOCKTAKE', ?, ?)
+                """,
+                (taken_at, item_id, delta, location, stocktake_id, note_label),
+            )
+            adjust_count += 1
+
+        db.execute("COMMIT")
+        flash(f"棚卸を更新しました（ADJUST反映: {adjust_count}件）", "success")
+        return redirect(url_for("stocktake_detail", stocktake_id=stocktake_id))
+
+    except Exception as e:
+        db.execute("ROLLBACK")
+        flash(f"棚卸更新に失敗しました: {e}", "error")
+        return redirect(
+            url_for("stocktake_edit_form", stocktake_id=stocktake_id, group=group)
+        )
+
+
+@app.post("/stocktakes/<int:stocktake_id>/delete")
+def stocktake_delete(stocktake_id: int):
+    db = get_db()
+
+    try:
+        db.execute("BEGIN")
+        db.execute(
+            "DELETE FROM inventory_tx WHERE ref_type = 'STOCKTAKE' AND ref_id = ?",
+            (stocktake_id,),
+        )
+        db.execute("DELETE FROM stocktake_lines WHERE stocktake_id = ?", (stocktake_id,))
+        db.execute("DELETE FROM stocktakes WHERE stocktake_id = ?", (stocktake_id,))
+        db.execute("COMMIT")
+        flash("棚卸を削除しました。", "success")
+    except Exception as e:
+        db.execute("ROLLBACK")
+        flash(f"棚卸の削除に失敗しました: {e}", "error")
+
+    return redirect(url_for("stocktakes_list"))
 
 
 # -----------------------------

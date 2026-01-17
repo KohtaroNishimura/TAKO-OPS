@@ -61,6 +61,10 @@
 
   <div class="actions mt-4 flex flex-wrap items-center gap-2">
     <a class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" href="{{ url_for('stocktake_monthly_new') }}">次の棚卸を入力</a>
+    <a class="button-link" href="{{ url_for('stocktake_edit_form', stocktake_id=st['stocktake_id']) }}">編集</a>
+    <form method="post" action="{{ url_for('stocktake_delete', stocktake_id=st['stocktake_id']) }}" onsubmit="return confirm('棚卸を削除します。よろしいですか？');">
+      <button type="submit" class="button-link text-red-600">削除</button>
+    </form>
   </div>
 </div>
 {% endblock %}
