@@ -5,7 +5,7 @@
 
   <p>
     <b>{{ st.scope }}</b> / <b>{{ st.location }}</b><br>
-    日時：{{ st.taken_at }}<br>
+    日時：{{ st.taken_at_display or st.taken_at }}<br>
     メモ：{{ st.note or "-" }}
   </p>
 

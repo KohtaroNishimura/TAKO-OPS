@@ -1801,6 +1801,7 @@ def stocktakes_list():
         SELECT
           st.stocktake_id,
           st.taken_at,
+          datetime(st.taken_at, '+9 hours') AS taken_at_display,
           st.scope,
           st.location,
           st.note,
@@ -1971,7 +1972,13 @@ def stocktake_detail(stocktake_id: int):
 
     header = db.execute(
         """
-        SELECT stocktake_id, taken_at, scope, location, note
+        SELECT
+          stocktake_id,
+          taken_at,
+          datetime(taken_at, '+9 hours') AS taken_at_display,
+          scope,
+          location,
+          note
         FROM stocktakes
         WHERE stocktake_id = ?
         """,
