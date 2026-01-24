@@ -2151,9 +2151,6 @@ def stocktake_weekly_new():
                     except ValueError:
                         counted = current_map.get(item_id, 0.0)
 
-                if unit_base == "pcs":
-                    counted = float(int(round(counted)))
-
                 if is_initial_stocktake:
                     unit_cost = calc_initial_stocktake_unit_cost(db, item_id, taken_at)
                 else:
@@ -2432,9 +2429,6 @@ def stocktake_create_unified():
                     except ValueError:
                         counted = current_map.get(item_id, 0.0)
 
-                if unit_base == "pcs":
-                    counted = float(int(round(counted)))
-
                 if is_initial_stocktake:
                     unit_cost = calc_initial_stocktake_unit_cost(db, item_id, taken_at)
                 else:
@@ -2532,9 +2526,6 @@ def stocktake_create_unified():
                     counted = float(raw)
                 except ValueError:
                     counted = current_map.get(item_id, 0.0)
-
-            if unit_base == "pcs":
-                counted = float(int(round(counted)))
 
             if is_initial_stocktake:
                 unit_cost = calc_initial_stocktake_unit_cost(db, item_id, taken_at)
@@ -2673,9 +2664,6 @@ def stocktake_update(stocktake_id: int):
                     counted = float(raw)
                 except ValueError:
                     counted = baseline_map.get(item_id, 0.0)
-
-            if unit_base == "pcs":
-                counted = float(int(round(counted)))
 
             if is_initial_stocktake:
                 unit_cost = calc_initial_stocktake_unit_cost(db, item_id, taken_at)
