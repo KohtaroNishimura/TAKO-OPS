@@ -3,11 +3,6 @@
   {% if created_purchase_id %}
     <div class="card rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm mb-3">
       <b>入庫登録しました。</b>
-      <div class="actions mt-4 flex flex-wrap items-center gap-2">
-        <a class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" href="{{ url_for('transfer_new_from_purchase', purchase_id=created_purchase_id) }}">
-          この仕入れを店舗へ移動
-        </a>
-      </div>
     </div>
   {% endif %}
 
@@ -28,7 +23,6 @@
           <th>仕入れ先</th>
           <th>合計金額</th>
           <th>メモ</th>
-          <th></th>
           <th>操作</th>
         </tr>
       </thead>
@@ -50,14 +44,9 @@
                 <button type="submit" class="inline-flex items-center rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">削除</button>
               </form>
             </td>
-            <td>
-              <a class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" href="{{ url_for('transfer_new_from_purchase', purchase_id=p['purchase_id']) }}">
-                店舗へ移動
-              </a>
-            </td>
           </tr>
         {% else %}
-          <tr><td colspan="8">まだ入庫がありません。「入庫登録」から追加してください。</td></tr>
+          <tr><td colspan="7">まだ入庫がありません。「入庫登録」から追加してください。</td></tr>
         {% endfor %}
       </tbody>
     </table>
