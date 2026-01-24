@@ -9,15 +9,11 @@
       <p>発注目安以下の材料はありません。</p>
     {% endif %}
 
-    {% for g in grouped %}
-      <hr class="my-4 border-slate-200">
-      <h3 class="text-base font-semibold text-slate-900">{{ g.supplier_name }}</h3>
-      <p class="muted">目安合計：{{ "%.0f"|format(g.est_sum) }}（参考価格ベース）</p>
-
-      <form method="post" action="{{ url_for('purchase_new_from_list') }}">
-
-        {% set sid = (g["items"][0]["supplier_id"] if g["items"]|length>0 else None) %}
-        <input type="hidden" name="supplier_id" value="{{ sid if sid is not none else '' }}">
+    <form method="post" action="{{ url_for('purchase_new_from_list') }}">
+      {% for g in grouped %}
+        <hr class="my-4 border-slate-200">
+        <h3 class="text-base font-semibold text-slate-900">{{ g.supplier_name }}</h3>
+        <p class="muted">目安合計：{{ "%.0f"|format(g.est_sum) }}（参考価格ベース）</p>
 
         <div class="overflow-x-auto -mx-4 sm:mx-0">
 
@@ -80,12 +76,18 @@
         </div>
 
         <div class="actions mt-4 flex flex-wrap items-center gap-2">
-          <button class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400" type="submit">
-            チェックした材料で入庫登録へ
+          {% set sid = (g["items"][0]["supplier_id"] if g["items"]|length>0 else None) %}
+          <button
+            class="btn inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+            type="submit"
+            name="supplier_id"
+            value="{{ sid if sid is not none else '' }}"
+          >
+            この仕入れ先で入庫登録へ
           </button>
-          <span class="muted">※最大10件までフォームに反映</span>
+          <span class="muted">※他の仕入れ先の材料もまとめて選択できます（最大10件までフォームに反映）</span>
         </div>
-      </form>
-    {% endfor %}
+      {% endfor %}
+    </form>
   </div>
 {% endblock %}
