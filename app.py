@@ -455,19 +455,12 @@ def purchase_create():
         if qty <= 0:
             errors.append(f"{idx}行目：数量(qty)は0より大きくしてください。")
             continue
-        if not qty.is_integer():
-            errors.append(f"{idx}行目：数量(qty)は整数で入力してください。")
-            continue
-
         item_row = db.execute(
             "SELECT name, unit_base FROM items WHERE item_id = ?",
             (item_id,),
         ).fetchone()
         if item_row is None:
             errors.append(f"{idx}行目：材料IDが存在しません。")
-            continue
-        if item_row["unit_base"] == "pcs" and not qty.is_integer():
-            errors.append(f"{idx}行目：{item_row['name']} はpcsなので整数で入力してください。")
             continue
 
         if unit_price_raw == "":
@@ -800,19 +793,12 @@ def purchase_update(purchase_id: int):
         if qty <= 0:
             errors.append(f"{idx}行目：数量(qty)は0より大きくしてください。")
             continue
-        if not qty.is_integer():
-            errors.append(f"{idx}行目：数量(qty)は整数で入力してください。")
-            continue
-
         item_row = db.execute(
             "SELECT name, unit_base FROM items WHERE item_id = ?",
             (item_id,),
         ).fetchone()
         if item_row is None:
             errors.append(f"{idx}行目：材料IDが存在しません。")
-            continue
-        if item_row["unit_base"] == "pcs" and not qty.is_integer():
-            errors.append(f"{idx}行目：{item_row['name']} はpcsなので整数で入力してください。")
             continue
 
         if unit_price_raw == "":
