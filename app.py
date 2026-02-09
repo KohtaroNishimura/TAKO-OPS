@@ -941,6 +941,20 @@ def _to_datetime_seconds(dt_local: str | None) -> str | None:
     return dt_jst.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _format_utc_to_jst(dt_utc: str | None) -> str | None:
+    """UTC文字列をJST表示用に変換する。"""
+    if not dt_utc:
+        return None
+    s = dt_utc.strip().replace("T", " ")
+    if len(s) == 16:  # 'YYYY-MM-DD HH:MM'
+        s = s + ":00"
+    try:
+        dt = datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return dt_utc
+    return dt.astimezone(ZoneInfo("Asia/Tokyo")).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def normalize_stocktake_mode(raw: str | None, default: str) -> str:
     mode = (raw or "").strip().lower()
     if mode not in ("weekly", "monthly"):
@@ -3150,7 +3164,7 @@ def monthly_food_cost():
     begin_taken_at = None
     begin_missing = False
     if begin_st:
-        begin_taken_at = begin_st["taken_at"]
+        begin_taken_at = _format_utc_to_jst(begin_st["taken_at"])
         begin_value = db.execute(
             """
             SELECT COALESCE(SUM(sl.line_amount), 0) AS v
@@ -3184,7 +3198,7 @@ def monthly_food_cost():
     end_missing = False
     end_lines = []
     if end_st:
-        end_taken_at = end_st["taken_at"]
+        end_taken_at = _format_utc_to_jst(end_st["taken_at"])
         end_value = db.execute(
             """
             SELECT COALESCE(SUM(sl.line_amount), 0) AS v
