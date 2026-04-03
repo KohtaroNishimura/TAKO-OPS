@@ -974,7 +974,7 @@ def fetch_items_for_stocktake_group(group: str) -> list[sqlite3.Row]:
     if group == "FOOD":
         return db.execute(
             """
-            SELECT item_id, name, unit_base, ref_unit_price, cost_group
+            SELECT item_id, name, unit_base, reorder_point, ref_unit_price, cost_group
             FROM items
             WHERE is_active = 1 AND cost_group = 'FOOD'
             ORDER BY name ASC
@@ -983,7 +983,7 @@ def fetch_items_for_stocktake_group(group: str) -> list[sqlite3.Row]:
     if group == "SUPPLIES":
         return db.execute(
             """
-            SELECT item_id, name, unit_base, ref_unit_price, cost_group
+            SELECT item_id, name, unit_base, reorder_point, ref_unit_price, cost_group
             FROM items
             WHERE is_active = 1 AND cost_group = 'SUPPLIES'
             ORDER BY name ASC
@@ -991,7 +991,7 @@ def fetch_items_for_stocktake_group(group: str) -> list[sqlite3.Row]:
         ).fetchall()
     return db.execute(
         """
-        SELECT item_id, name, unit_base, ref_unit_price, cost_group
+        SELECT item_id, name, unit_base, reorder_point, ref_unit_price, cost_group
         FROM items
         WHERE is_active = 1
         ORDER BY name ASC
@@ -2040,6 +2040,54 @@ def _get_active_batch_config_id(db):
     return row["batch_config_id"]
 
 
+def _get_qty_per_batch_map_for_items(db, item_ids: list[int]) -> dict[int, float]:
+    batch_config_id = _get_active_batch_config_id(db)
+    if not batch_config_id or not item_ids:
+        return {}
+
+    placeholders = ",".join("?" for _ in item_ids)
+    params = [batch_config_id, *item_ids]
+    rows = db.execute(
+        f"""
+        SELECT item_id, COALESCE(qty_per_batch, 0) AS qty_per_batch
+        FROM recipe_batch
+        WHERE batch_config_id = ?
+          AND item_id IN ({placeholders})
+        """,
+        params,
+    ).fetchall()
+    return {int(r["item_id"]): float(r["qty_per_batch"] or 0) for r in rows}
+
+
+def _apply_weekly_batches_to_reorder_point(
+    db, items: list[sqlite3.Row], weekly_batches: float
+) -> int:
+    if weekly_batches < 0:
+        return 0
+    item_ids = [int(it["item_id"]) for it in items]
+    qty_per_batch_map = _get_qty_per_batch_map_for_items(db, item_ids)
+    if not qty_per_batch_map:
+        return 0
+
+    updated = 0
+    for it in items:
+        item_id = int(it["item_id"])
+        qty_per_batch = qty_per_batch_map.get(item_id)
+        if qty_per_batch is None:
+            continue
+        reorder_point = max(qty_per_batch * weekly_batches, 0.0)
+        db.execute(
+            """
+            UPDATE items
+            SET reorder_point = ?
+            WHERE item_id = ?
+            """,
+            (reorder_point, item_id),
+        )
+        updated += 1
+    return updated
+
+
 def _get_manual_items_for_weekly(db, batch_config_id: int):
     # 手動管理＝auto_consume=0（NULLも0扱いにして手動に寄せる）
     # 理論在庫＝inventory_tx合計
@@ -2217,6 +2265,9 @@ def stocktake_weekly_new():
             )
 
     rows = []
+    item_ids = [int(it["item_id"]) for it in items]
+    qty_per_batch_map = _get_qty_per_batch_map_for_items(db, item_ids)
+    has_active_batch_config = _get_active_batch_config_id(db) is not None
     for it in items:
         cur = current_map.get(it["item_id"], 0.0)
         rows.append(
@@ -2226,6 +2277,8 @@ def stocktake_weekly_new():
                 "unit_base": it["unit_base"],
                 "ref_unit_price": float(it["ref_unit_price"] or 0),
                 "cost_group": it["cost_group"],
+                "reorder_point": float(it["reorder_point"] or 0),
+                "qty_per_batch": float(qty_per_batch_map.get(int(it["item_id"]), 0)),
                 "current_qty": cur,
                 "counted_default": cur,
             }
@@ -2240,6 +2293,8 @@ def stocktake_weekly_new():
         group=group,
         rows=rows,
         default_taken_at=default_taken_at,
+        has_active_batch_config=has_active_batch_config,
+        default_weekly_batches=1.0,
     )
 
 
@@ -2266,6 +2321,9 @@ def stocktake_monthly_new():
     current_map = {r["item_id"]: float(r["qty"] or 0) for r in cur_rows}
 
     rows = []
+    item_ids = [int(it["item_id"]) for it in items]
+    qty_per_batch_map = _get_qty_per_batch_map_for_items(db, item_ids)
+    has_active_batch_config = _get_active_batch_config_id(db) is not None
     for it in items:
         cur = current_map.get(it["item_id"], 0.0)
         rows.append(
@@ -2275,6 +2333,8 @@ def stocktake_monthly_new():
                 "unit_base": it["unit_base"],
                 "ref_unit_price": float(it["ref_unit_price"] or 0),
                 "cost_group": it["cost_group"],
+                "reorder_point": float(it["reorder_point"] or 0),
+                "qty_per_batch": float(qty_per_batch_map.get(int(it["item_id"]), 0)),
                 "current_qty": cur,
                 "counted_default": cur,
             }
@@ -2289,6 +2349,8 @@ def stocktake_monthly_new():
         group=group,
         rows=rows,
         default_taken_at=default_taken_at,
+        has_active_batch_config=has_active_batch_config,
+        default_weekly_batches=1.0,
     )
 
 
@@ -2343,6 +2405,9 @@ def stocktake_edit_form(stocktake_id: int):
     line_map = {r["item_id"]: float(r["counted_qty"] or 0) for r in line_rows}
 
     rows = []
+    item_ids = [int(it["item_id"]) for it in items]
+    qty_per_batch_map = _get_qty_per_batch_map_for_items(db, item_ids)
+    has_active_batch_config = _get_active_batch_config_id(db) is not None
     for it in items:
         cur = current_map.get(it["item_id"], 0.0)
         counted = line_map.get(it["item_id"], cur)
@@ -2353,6 +2418,8 @@ def stocktake_edit_form(stocktake_id: int):
                 "unit_base": it["unit_base"],
                 "ref_unit_price": float(it["ref_unit_price"] or 0),
                 "cost_group": it["cost_group"],
+                "reorder_point": float(it["reorder_point"] or 0),
+                "qty_per_batch": float(qty_per_batch_map.get(int(it["item_id"]), 0)),
                 "current_qty": cur,
                 "counted_default": counted,
             }
@@ -2367,6 +2434,8 @@ def stocktake_edit_form(stocktake_id: int):
         form_action=url_for("stocktake_update", stocktake_id=stocktake_id),
         is_edit=True,
         stocktake_id=stocktake_id,
+        has_active_batch_config=has_active_batch_config,
+        default_weekly_batches=1.0,
     )
 
 
@@ -2382,6 +2451,18 @@ def stocktake_create_unified():
     if not taken_at:
         taken_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     note = (request.form.get("note") or "").strip()
+    apply_weekly_batches = request.form.get("apply_weekly_batches") == "1"
+    weekly_batches_raw = (request.form.get("weekly_batches") or "").strip()
+    weekly_batches = None
+    if mode == "weekly" and apply_weekly_batches and weekly_batches_raw:
+        try:
+            weekly_batches = float(weekly_batches_raw)
+        except ValueError:
+            flash("1週間のバッチ数は数値で入力してください。", "error")
+            return redirect(url_for("stocktake_weekly_new", group=group, mode=mode))
+        if weekly_batches < 0:
+            flash("1週間のバッチ数は0以上にしてください。", "error")
+            return redirect(url_for("stocktake_weekly_new", group=group, mode=mode))
 
     items = fetch_items_for_stocktake_group(group)
 
@@ -2483,8 +2564,20 @@ def stocktake_create_unified():
                 )
                 adjust_count += 1
 
+            updated_reorder_count = 0
+            if weekly_batches is not None:
+                updated_reorder_count = _apply_weekly_batches_to_reorder_point(
+                    db, items, weekly_batches
+                )
+
             db.execute("COMMIT")
-            flash(f"週次棚卸を登録しました（ADJUST反映: {adjust_count}件）", "success")
+            if weekly_batches is not None:
+                flash(
+                    f"週次棚卸を登録しました（ADJUST反映: {adjust_count}件 / 発注目安更新: {updated_reorder_count}件）",
+                    "success",
+                )
+            else:
+                flash(f"週次棚卸を登録しました（ADJUST反映: {adjust_count}件）", "success")
             return redirect(url_for("stocktake_detail", stocktake_id=stocktake_id))
 
         except Exception as e:
@@ -2613,6 +2706,22 @@ def stocktake_update(stocktake_id: int):
     if not taken_at:
         taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     note = (request.form.get("note") or "").strip()
+    apply_weekly_batches = request.form.get("apply_weekly_batches") == "1"
+    weekly_batches_raw = (request.form.get("weekly_batches") or "").strip()
+    weekly_batches = None
+    if scope == "WEEKLY" and apply_weekly_batches and weekly_batches_raw:
+        try:
+            weekly_batches = float(weekly_batches_raw)
+        except ValueError:
+            flash("1週間のバッチ数は数値で入力してください。", "error")
+            return redirect(
+                url_for("stocktake_edit_form", stocktake_id=stocktake_id, group=group)
+            )
+        if weekly_batches < 0:
+            flash("1週間のバッチ数は0以上にしてください。", "error")
+            return redirect(
+                url_for("stocktake_edit_form", stocktake_id=stocktake_id, group=group)
+            )
 
     items = fetch_items_for_stocktake_group(group)
     month_start, month_end = month_range_for_datetime(taken_at)
@@ -2713,8 +2822,20 @@ def stocktake_update(stocktake_id: int):
             )
             adjust_count += 1
 
+        updated_reorder_count = 0
+        if scope == "WEEKLY" and weekly_batches is not None:
+            updated_reorder_count = _apply_weekly_batches_to_reorder_point(
+                db, items, weekly_batches
+            )
+
         db.execute("COMMIT")
-        flash(f"棚卸を更新しました（ADJUST反映: {adjust_count}件）", "success")
+        if scope == "WEEKLY" and weekly_batches is not None:
+            flash(
+                f"棚卸を更新しました（ADJUST反映: {adjust_count}件 / 発注目安更新: {updated_reorder_count}件）",
+                "success",
+            )
+        else:
+            flash(f"棚卸を更新しました（ADJUST反映: {adjust_count}件）", "success")
         return redirect(url_for("stocktake_detail", stocktake_id=stocktake_id))
 
     except Exception as e:
