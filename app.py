@@ -2451,7 +2451,7 @@ def stocktake_create_unified():
     if not taken_at:
         taken_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     note = (request.form.get("note") or "").strip()
-    apply_weekly_batches = request.form.get("apply_weekly_batches") == "1"
+    apply_weekly_batches = "1" in request.form.getlist("apply_weekly_batches")
     weekly_batches_raw = (request.form.get("weekly_batches") or "").strip()
     weekly_batches = None
     if mode == "weekly" and apply_weekly_batches and weekly_batches_raw:
@@ -2706,7 +2706,7 @@ def stocktake_update(stocktake_id: int):
     if not taken_at:
         taken_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     note = (request.form.get("note") or "").strip()
-    apply_weekly_batches = request.form.get("apply_weekly_batches") == "1"
+    apply_weekly_batches = "1" in request.form.getlist("apply_weekly_batches")
     weekly_batches_raw = (request.form.get("weekly_batches") or "").strip()
     weekly_batches = None
     if scope == "WEEKLY" and apply_weekly_batches and weekly_batches_raw:
