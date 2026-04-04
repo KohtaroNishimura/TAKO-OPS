@@ -22,6 +22,14 @@
         <div class="muted">空なら今日</div>
       </div>
 
+      <div>
+        <label>入庫先</label>
+        <select name="location">
+          <option value="STORE" {{ "selected" if (default_location is not defined or default_location == "STORE") else "" }}>店舗（STORE）</option>
+          <option value="WAREHOUSE" {{ "selected" if (default_location is defined and default_location == "WAREHOUSE") else "" }}>倉庫（WAREHOUSE）</option>
+        </select>
+      </div>
+
       <label>メモ（任意）</label>
       <input name="note" value="{{ default_note if default_note is defined else '' }}" placeholder="例：Aプライスでまとめ買い">
 

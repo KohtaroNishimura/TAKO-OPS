@@ -62,6 +62,15 @@ def _to_float(value: str, default: float = 0.0) -> float:
     return float(value)
 
 
+def normalize_inventory_location(raw: str | None, default: str = "STORE") -> str:
+    location = (raw or "").strip().upper()
+    if location == "WAREHOUSE" or location == "STORE":
+        return location
+    if (raw or "").strip() == "Warehouse":
+        return "WAREHOUSE"
+    return default
+
+
 def fetch_suppliers() -> list[sqlite3.Row]:
     db = get_db()
     return db.execute(
@@ -393,7 +402,12 @@ def purchases_list():
 def purchase_new_form():
     suppliers = fetch_suppliers()
     items = fetch_active_items()
-    return render_template("purchase_new.html", suppliers=suppliers, items=items)
+    return render_template(
+        "purchase_new.html",
+        suppliers=suppliers,
+        items=items,
+        default_location="STORE",
+    )
 
 
 @app.post("/purchases")
@@ -410,7 +424,7 @@ def purchase_create():
         # 空ならDB側のDEFAULTに任せる
         purchased_at = None
 
-    location = "WAREHOUSE"
+    location = normalize_inventory_location(request.form.get("location"), "STORE")
 
     note = (request.form.get("note") or "").strip() or None
 
@@ -623,6 +637,7 @@ def purchase_new_from_list():
         items=items,
         prefill_lines=prefill_lines,
         default_supplier_id=supplier_id,
+        default_location="STORE",
         default_note=default_note,
     )
 
@@ -680,7 +695,12 @@ def purchase_edit_form(purchase_id: int):
           p.purchased_at,
           p.note,
           p.supplier_id,
-          s.name AS supplier_name
+          s.name AS supplier_name,
+          COALESCE((
+            SELECT MIN(tx.location)
+            FROM inventory_tx tx
+            WHERE tx.ref_type = 'PURCHASE' AND tx.ref_id = p.purchase_id
+          ), 'STORE') AS location
         FROM purchases p
         LEFT JOIN suppliers s ON s.supplier_id = p.supplier_id
         WHERE p.purchase_id = ?
@@ -726,6 +746,7 @@ def purchase_edit_form(purchase_id: int):
         suppliers=suppliers,
         items=items,
         default_purchased_date=default_purchased_date,
+        default_location=normalize_inventory_location(header["location"], "STORE"),
     )
 
 
@@ -734,7 +755,18 @@ def purchase_update(purchase_id: int):
     db = get_db()
 
     header = db.execute(
-        "SELECT purchase_id, purchased_at FROM purchases WHERE purchase_id = ?",
+        """
+        SELECT
+          p.purchase_id,
+          p.purchased_at,
+          COALESCE((
+            SELECT MIN(tx.location)
+            FROM inventory_tx tx
+            WHERE tx.ref_type = 'PURCHASE' AND tx.ref_id = p.purchase_id
+          ), 'STORE') AS location
+        FROM purchases p
+        WHERE p.purchase_id = ?
+        """,
         (purchase_id,),
     ).fetchone()
     if header is None:
@@ -749,7 +781,9 @@ def purchase_update(purchase_id: int):
     else:
         purchased_at_db = header["purchased_at"]
 
-    location = "WAREHOUSE"
+    location = normalize_inventory_location(
+        request.form.get("location"), header["location"] or "STORE"
+    )
 
     note = (request.form.get("note") or "").strip() or None
 
