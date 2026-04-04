@@ -19,6 +19,79 @@ app.teardown_appcontext(close_db)
 _items_note_column_ready = False
 
 
+def ensure_purchase_inventory_tx_integrity() -> None:
+    """
+    入庫ヘッダ/明細と inventory_tx(PURCHASE) の不整合を自己修復する。
+    旧不具合で inventory_tx が欠けたデータを起動時に補正するための処理。
+    """
+    db = get_db()
+    try:
+        broken_rows = db.execute(
+            """
+            SELECT
+              p.purchase_id,
+              p.purchased_at,
+              p.note,
+              COUNT(DISTINCT pl.purchase_line_id) AS line_count,
+              COUNT(DISTINCT tx.tx_id) AS tx_count,
+              COALESCE(MIN(tx.location), 'STORE') AS location
+            FROM purchases p
+            LEFT JOIN purchase_lines pl ON pl.purchase_id = p.purchase_id
+            LEFT JOIN inventory_tx tx
+              ON tx.ref_type = 'PURCHASE'
+             AND tx.ref_id = p.purchase_id
+            GROUP BY p.purchase_id
+            HAVING line_count > 0 AND tx_count != line_count
+            """
+        ).fetchall()
+        if not broken_rows:
+            return
+
+        db.execute("BEGIN")
+        for row in broken_rows:
+            purchase_id = int(row["purchase_id"])
+            purchased_at = row["purchased_at"]
+            note = row["note"]
+            location = normalize_inventory_location(row["location"], "STORE")
+
+            db.execute(
+                "DELETE FROM inventory_tx WHERE ref_type = 'PURCHASE' AND ref_id = ?",
+                (purchase_id,),
+            )
+            lines = db.execute(
+                """
+                SELECT item_id, qty
+                FROM purchase_lines
+                WHERE purchase_id = ?
+                ORDER BY purchase_line_id ASC
+                """,
+                (purchase_id,),
+            ).fetchall()
+            for line in lines:
+                db.execute(
+                    """
+                    INSERT INTO inventory_tx (
+                      happened_at, item_id, qty_delta, tx_type, location, ref_type, ref_id, note
+                    )
+                    VALUES (
+                      COALESCE(?, datetime('now')),
+                      ?, ?, 'PURCHASE', ?, 'PURCHASE', ?, ?
+                    )
+                    """,
+                    (
+                        purchased_at,
+                        int(line["item_id"]),
+                        float(line["qty"] or 0),
+                        location,
+                        purchase_id,
+                        note,
+                    ),
+                )
+        commit_and_sync()
+    except Exception:
+        db.rollback()
+
+
 def ensure_items_note_column() -> None:
     db = get_db()
     try:
@@ -52,6 +125,7 @@ def _ensure_schema():
         return
     ensure_items_note_column()
     ensure_stocktake_lines_cost_columns()
+    ensure_purchase_inventory_tx_integrity()
     _items_note_column_ready = True
 
 
