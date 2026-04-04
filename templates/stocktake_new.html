@@ -91,9 +91,9 @@
         <div>
           <label>発注目安の自動更新</label>
           <input type="hidden" name="apply_weekly_batches" value="0">
-          <label class="mt-2 inline-flex items-center gap-2">
+          <label class="mt-2 flex items-start gap-2">
             <input type="checkbox" name="apply_weekly_batches" value="1" checked>
-            <span>保存時に発注目安（reorder_point）を更新する</span>
+            <span class="leading-snug">保存時に発注目安（reorder_point）を更新する</span>
           </label>
           {% if not has_active_batch_config %}
             <div class="muted text-red-600">アクティブなバッチ設定がないため、バッチ換算による更新は0件になります。</div>

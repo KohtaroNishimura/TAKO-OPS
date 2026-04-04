@@ -9,3 +9,9 @@ th { background: #fafafa; }
 .muted { color: #64748b; font-size: 0.875rem; }
 label { display:block; margin-top: 10px; font-weight: 600; }
 input, select, textarea { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ddd; }
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+  padding: 0;
+  border: 0;
+}
