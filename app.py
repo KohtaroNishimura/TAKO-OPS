@@ -1063,6 +1063,11 @@ def _format_utc_to_jst(dt_utc: str | None) -> str | None:
     return dt.astimezone(ZoneInfo("Asia/Tokyo")).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _iter_chunks(values: list[int], chunk_size: int = 400):
+    for i in range(0, len(values), chunk_size):
+        yield values[i : i + chunk_size]
+
+
 def normalize_stocktake_mode(raw: str | None, default: str) -> str:
     mode = (raw or "").strip().lower()
     if mode not in ("weekly", "monthly"):
@@ -1105,6 +1110,27 @@ def fetch_items_for_stocktake_group(group: str) -> list[sqlite3.Row]:
         ORDER BY name ASC
         """
     ).fetchall()
+
+
+def get_inventory_qty_map_for_items(db, item_ids: list[int]) -> dict[int, float]:
+    if not item_ids:
+        return {}
+
+    qty_map: dict[int, float] = {}
+    for chunk in _iter_chunks(item_ids):
+        placeholders = ",".join("?" for _ in chunk)
+        rows = db.execute(
+            f"""
+            SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
+            FROM inventory_tx
+            WHERE item_id IN ({placeholders})
+            GROUP BY item_id
+            """,
+            chunk,
+        ).fetchall()
+        for row in rows:
+            qty_map[int(row["item_id"])] = float(row["qty"] or 0)
+    return qty_map
 
 
 def fetch_items_for_stocktake(only_food: bool) -> list[sqlite3.Row]:
@@ -1323,18 +1349,21 @@ def build_monthly_weighted_unit_cost_map(
                 unit_cost if unit_cost is not None else ref_map.get(item_id, 0.0)
             )
 
-    placeholders = ",".join(["?"] * len(item_ids))
-    purchase_rows = db.execute(
-        f"""
-        SELECT pl.item_id, pl.qty, pl.unit_price, pl.line_amount
-        FROM purchase_lines pl
-        JOIN purchases p ON p.purchase_id = pl.purchase_id
-        WHERE pl.item_id IN ({placeholders})
-          AND p.purchased_at >= ?
-          AND p.purchased_at < ?
-        """,
-        (*item_ids, month_start, month_end),
-    ).fetchall()
+    purchase_rows = []
+    for chunk in _iter_chunks(item_ids):
+        placeholders = ",".join(["?"] * len(chunk))
+        rows = db.execute(
+            f"""
+            SELECT pl.item_id, pl.qty, pl.unit_price, pl.line_amount
+            FROM purchase_lines pl
+            JOIN purchases p ON p.purchase_id = pl.purchase_id
+            WHERE pl.item_id IN ({placeholders})
+              AND p.purchased_at >= ?
+              AND p.purchased_at < ?
+            """,
+            (*chunk, month_start, month_end),
+        ).fetchall()
+        purchase_rows.extend(rows)
 
     purchased_qty_map: dict[int, float] = {}
     purchased_amount_map: dict[int, float] = {}
@@ -1435,38 +1464,39 @@ def build_initial_stocktake_unit_cost_map(
     item_ids = [int(it["item_id"]) for it in items]
     ref_map = {int(it["item_id"]): float(it["ref_unit_price"] or 0) for it in items}
 
-    placeholders = ",".join(["?"] * len(item_ids))
-    rows = db.execute(
-        f"""
-        SELECT
-          pl.item_id AS item_id,
-          COALESCE(SUM(
-            CASE
-              WHEN pl.line_amount IS NOT NULL THEN pl.line_amount
-              WHEN pl.unit_price IS NOT NULL THEN pl.qty * pl.unit_price
-              ELSE pl.qty * COALESCE(i.ref_unit_price, 0)
-            END
-          ), 0) AS amount_sum,
-          COALESCE(SUM(pl.qty), 0) AS qty_sum
-        FROM purchase_lines pl
-        JOIN purchases p ON p.purchase_id = pl.purchase_id
-        JOIN items i ON i.item_id = pl.item_id
-        WHERE pl.item_id IN ({placeholders})
-          AND datetime(p.purchased_at) <= datetime(?)
-        GROUP BY pl.item_id
-        """,
-        (*item_ids, taken_at),
-    ).fetchall()
-
     unit_cost_map: dict[int, float] = {}
-    for r in rows:
-        item_id = int(r["item_id"])
-        qty_sum = float(r["qty_sum"] or 0)
-        if qty_sum <= 0:
-            unit_cost_map[item_id] = ref_map.get(item_id, 0.0)
-            continue
-        amount_sum = float(r["amount_sum"] or 0)
-        unit_cost_map[item_id] = amount_sum / qty_sum
+    for chunk in _iter_chunks(item_ids):
+        placeholders = ",".join(["?"] * len(chunk))
+        rows = db.execute(
+            f"""
+            SELECT
+              pl.item_id AS item_id,
+              COALESCE(SUM(
+                CASE
+                  WHEN pl.line_amount IS NOT NULL THEN pl.line_amount
+                  WHEN pl.unit_price IS NOT NULL THEN pl.qty * pl.unit_price
+                  ELSE pl.qty * COALESCE(i.ref_unit_price, 0)
+                END
+              ), 0) AS amount_sum,
+              COALESCE(SUM(pl.qty), 0) AS qty_sum
+            FROM purchase_lines pl
+            JOIN purchases p ON p.purchase_id = pl.purchase_id
+            JOIN items i ON i.item_id = pl.item_id
+            WHERE pl.item_id IN ({placeholders})
+              AND datetime(p.purchased_at) <= datetime(?)
+            GROUP BY pl.item_id
+            """,
+            (*chunk, taken_at),
+        ).fetchall()
+
+        for r in rows:
+            item_id = int(r["item_id"])
+            qty_sum = float(r["qty_sum"] or 0)
+            if qty_sum <= 0:
+                unit_cost_map[item_id] = ref_map.get(item_id, 0.0)
+                continue
+            amount_sum = float(r["amount_sum"] or 0)
+            unit_cost_map[item_id] = amount_sum / qty_sum
 
     for item_id in item_ids:
         if item_id not in unit_cost_map:
@@ -2206,18 +2236,22 @@ def _get_qty_per_batch_map_for_items(db, item_ids: list[int]) -> dict[int, float
     if not batch_config_id or not item_ids:
         return {}
 
-    placeholders = ",".join("?" for _ in item_ids)
-    params = [batch_config_id, *item_ids]
-    rows = db.execute(
-        f"""
-        SELECT item_id, COALESCE(qty_per_batch, 0) AS qty_per_batch
-        FROM recipe_batch
-        WHERE batch_config_id = ?
-          AND item_id IN ({placeholders})
-        """,
-        params,
-    ).fetchall()
-    return {int(r["item_id"]): float(r["qty_per_batch"] or 0) for r in rows}
+    qty_per_batch_map: dict[int, float] = {}
+    for chunk in _iter_chunks(item_ids):
+        placeholders = ",".join("?" for _ in chunk)
+        params = [batch_config_id, *chunk]
+        rows = db.execute(
+            f"""
+            SELECT item_id, COALESCE(qty_per_batch, 0) AS qty_per_batch
+            FROM recipe_batch
+            WHERE batch_config_id = ?
+              AND item_id IN ({placeholders})
+            """,
+            params,
+        ).fetchall()
+        for r in rows:
+            qty_per_batch_map[int(r["item_id"])] = float(r["qty_per_batch"] or 0)
+    return qty_per_batch_map
 
 
 def _apply_weekly_batches_to_reorder_point(
@@ -2306,14 +2340,8 @@ def stocktake_weekly_new():
     location = "WAREHOUSE"
     items = fetch_items_for_stocktake_group(group)
 
-    cur_rows = db.execute(
-        """
-        SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
-        FROM inventory_tx
-        GROUP BY item_id
-        """
-    ).fetchall()
-    current_map = {row["item_id"]: float(row["qty"] or 0) for row in cur_rows}
+    item_ids = [int(it["item_id"]) for it in items]
+    current_map = get_inventory_qty_map_for_items(db, item_ids)
 
     if request.method == "POST":
         taken_at = (request.form.get("taken_at") or "").strip()
@@ -2429,7 +2457,6 @@ def stocktake_weekly_new():
             )
 
     rows = []
-    item_ids = [int(it["item_id"]) for it in items]
     qty_per_batch_map = _get_qty_per_batch_map_for_items(db, item_ids)
     has_active_batch_config = _get_active_batch_config_id(db) is not None
     for it in items:
@@ -2475,14 +2502,8 @@ def stocktake_monthly_new():
     location = "WAREHOUSE"
     items = fetch_items_for_stocktake_group(group)
 
-    cur_rows = db.execute(
-        """
-        SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
-        FROM inventory_tx
-        GROUP BY item_id
-        """
-    ).fetchall()
-    current_map = {r["item_id"]: float(r["qty"] or 0) for r in cur_rows}
+    item_ids = [int(it["item_id"]) for it in items]
+    current_map = get_inventory_qty_map_for_items(db, item_ids)
 
     rows = []
     item_ids = [int(it["item_id"]) for it in items]
@@ -2549,14 +2570,8 @@ def stocktake_edit_form(stocktake_id: int):
 
     items = fetch_items_for_stocktake_group(group)
 
-    cur_rows = db.execute(
-        """
-        SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
-        FROM inventory_tx
-        GROUP BY item_id
-        """
-    ).fetchall()
-    current_map = {r["item_id"]: float(r["qty"] or 0) for r in cur_rows}
+    item_ids = [int(it["item_id"]) for it in items]
+    current_map = get_inventory_qty_map_for_items(db, item_ids)
 
     line_rows = db.execute(
         """
@@ -2630,14 +2645,8 @@ def stocktake_create_unified():
 
     items = fetch_items_for_stocktake_group(group)
 
-    cur_rows = db.execute(
-        """
-        SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
-        FROM inventory_tx
-        GROUP BY item_id
-        """
-    ).fetchall()
-    current_map = {r["item_id"]: float(r["qty"] or 0) for r in cur_rows}
+    item_ids = [int(it["item_id"]) for it in items]
+    current_map = get_inventory_qty_map_for_items(db, item_ids)
 
     month_start, month_end = month_range_for_datetime(taken_at)
 
@@ -2908,14 +2917,8 @@ def stocktake_update(stocktake_id: int):
         )
         db.execute("DELETE FROM stocktake_lines WHERE stocktake_id = ?", (stocktake_id,))
 
-        baseline_rows = db.execute(
-            """
-            SELECT item_id, COALESCE(SUM(qty_delta), 0) AS qty
-            FROM inventory_tx
-            GROUP BY item_id
-            """
-        ).fetchall()
-        baseline_map = {r["item_id"]: float(r["qty"] or 0) for r in baseline_rows}
+        item_ids = [int(it["item_id"]) for it in items]
+        baseline_map = get_inventory_qty_map_for_items(db, item_ids)
 
         prev_monthly = db.execute(
             """
