@@ -1422,6 +1422,59 @@ def calc_initial_stocktake_unit_cost(db, item_id: int, taken_at: str) -> float:
     return amount_sum / qty_sum
 
 
+def build_initial_stocktake_unit_cost_map(
+    db, items: list[sqlite3.Row], taken_at: str
+) -> dict[int, float]:
+    """
+    初回棚卸用: 棚卸日時までの実績平均単価を品目ごとに一括計算する。
+    実績数量が0の品目は ref_unit_price を使用。
+    """
+    if not items:
+        return {}
+
+    item_ids = [int(it["item_id"]) for it in items]
+    ref_map = {int(it["item_id"]): float(it["ref_unit_price"] or 0) for it in items}
+
+    placeholders = ",".join(["?"] * len(item_ids))
+    rows = db.execute(
+        f"""
+        SELECT
+          pl.item_id AS item_id,
+          COALESCE(SUM(
+            CASE
+              WHEN pl.line_amount IS NOT NULL THEN pl.line_amount
+              WHEN pl.unit_price IS NOT NULL THEN pl.qty * pl.unit_price
+              ELSE pl.qty * COALESCE(i.ref_unit_price, 0)
+            END
+          ), 0) AS amount_sum,
+          COALESCE(SUM(pl.qty), 0) AS qty_sum
+        FROM purchase_lines pl
+        JOIN purchases p ON p.purchase_id = pl.purchase_id
+        JOIN items i ON i.item_id = pl.item_id
+        WHERE pl.item_id IN ({placeholders})
+          AND datetime(p.purchased_at) <= datetime(?)
+        GROUP BY pl.item_id
+        """,
+        (*item_ids, taken_at),
+    ).fetchall()
+
+    unit_cost_map: dict[int, float] = {}
+    for r in rows:
+        item_id = int(r["item_id"])
+        qty_sum = float(r["qty_sum"] or 0)
+        if qty_sum <= 0:
+            unit_cost_map[item_id] = ref_map.get(item_id, 0.0)
+            continue
+        amount_sum = float(r["amount_sum"] or 0)
+        unit_cost_map[item_id] = amount_sum / qty_sum
+
+    for item_id in item_ids:
+        if item_id not in unit_cost_map:
+            unit_cost_map[item_id] = ref_map.get(item_id, 0.0)
+
+    return unit_cost_map
+
+
 def format_daily_report_for_line(rep) -> str:
     """
     LINEへコピペする用の本文を作る
@@ -2177,23 +2230,26 @@ def _apply_weekly_batches_to_reorder_point(
     if not qty_per_batch_map:
         return 0
 
-    updated = 0
+    update_params = []
     for it in items:
         item_id = int(it["item_id"])
         qty_per_batch = qty_per_batch_map.get(item_id)
         if qty_per_batch is None:
             continue
         reorder_point = max(qty_per_batch * weekly_batches, 0.0)
-        db.execute(
-            """
-            UPDATE items
-            SET reorder_point = ?
-            WHERE item_id = ?
-            """,
-            (reorder_point, item_id),
-        )
-        updated += 1
-    return updated
+        update_params.append((reorder_point, item_id))
+    if not update_params:
+        return 0
+
+    db.executemany(
+        """
+        UPDATE items
+        SET reorder_point = ?
+        WHERE item_id = ?
+        """,
+        update_params,
+    )
+    return len(update_params)
 
 
 def _get_manual_items_for_weekly(db, batch_config_id: int):
@@ -2881,8 +2937,13 @@ def stocktake_update(stocktake_id: int):
             cost_map = build_monthly_weighted_unit_cost_map(
                 db, items, month_start, month_end, location=location
             )
+        initial_cost_map = {}
+        if is_initial_stocktake:
+            initial_cost_map = build_initial_stocktake_unit_cost_map(db, items, taken_at)
 
         adjust_count = 0
+        stocktake_line_params = []
+        inventory_tx_params = []
         for it in items:
             item_id = it["item_id"]
             unit_base = it["unit_base"]
@@ -2897,20 +2958,14 @@ def stocktake_update(stocktake_id: int):
                     counted = baseline_map.get(item_id, 0.0)
 
             if is_initial_stocktake:
-                unit_cost = calc_initial_stocktake_unit_cost(db, item_id, taken_at)
+                unit_cost = initial_cost_map.get(int(item_id), float(it["ref_unit_price"] or 0))
             else:
                 unit_cost, _no_qty, _used_ref = cost_map.get(
                     item_id, (float(it["ref_unit_price"] or 0), True, False)
                 )
             line_amount = counted * unit_cost
-            db.execute(
-                """
-                INSERT INTO stocktake_lines (
-                  stocktake_id, item_id, counted_qty, unit_cost, line_amount
-                )
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (stocktake_id, item_id, counted, unit_cost, line_amount),
+            stocktake_line_params.append(
+                (stocktake_id, item_id, counted, unit_cost, line_amount)
             )
 
             baseline = baseline_map.get(item_id, 0.0)
@@ -2919,16 +2974,31 @@ def stocktake_update(stocktake_id: int):
                 continue
 
             note_label = "WEEKLY棚卸差分（ADJUST）" if scope == "WEEKLY" else "MONTHLY棚卸差分（ADJUST）"
-            db.execute(
+            inventory_tx_params.append(
+                (taken_at, item_id, delta, location, stocktake_id, note_label)
+            )
+            adjust_count += 1
+
+        if stocktake_line_params:
+            db.executemany(
+                """
+                INSERT INTO stocktake_lines (
+                  stocktake_id, item_id, counted_qty, unit_cost, line_amount
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                stocktake_line_params,
+            )
+        if inventory_tx_params:
+            db.executemany(
                 """
                 INSERT INTO inventory_tx
                   (happened_at, item_id, qty_delta, tx_type, location, ref_type, ref_id, note)
                 VALUES
                   (?, ?, ?, 'ADJUST', ?, 'STOCKTAKE', ?, ?)
                 """,
-                (taken_at, item_id, delta, location, stocktake_id, note_label),
+                inventory_tx_params,
             )
-            adjust_count += 1
 
         updated_reorder_count = 0
         if scope == "WEEKLY" and weekly_batches is not None:
