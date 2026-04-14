@@ -1510,7 +1510,6 @@ def format_daily_report_for_line(rep) -> str:
     LINEへコピペする用の本文を作る
     形式:
     【日報】
-    ロス
     売れたバッチ
     生産時間(入力値・時間)
 
@@ -1518,7 +1517,6 @@ def format_daily_report_for_line(rep) -> str:
 
     所感
     """
-    waste = int(rep["waste_pieces"] or 0)
     sold = rep["sold_batches"]
     sold_str = str(sold if sold is not None else 0)
 
@@ -1533,25 +1531,11 @@ def format_daily_report_for_line(rep) -> str:
 
     return (
         "【日報】\n"
-        f"{waste}\n"
         f"{sold_str}\n"
         f"{prod_str}\n\n"
         f"{sales_str}\n\n"
         f"{impression}"
     )
-
-
-def get_active_pieces_per_batch(db) -> int:
-    row = db.execute(
-        """
-        SELECT pieces_per_batch
-        FROM batch_config
-        WHERE is_active = 1
-        ORDER BY batch_config_id DESC
-        LIMIT 1
-        """
-    ).fetchone()
-    return int(row["pieces_per_batch"]) if row else 80  # 念のため80 fallback
 
 
 def get_active_batch_config(db):
@@ -1569,12 +1553,12 @@ def get_active_batch_config(db):
 
 def regenerate_inventory_tx_for_daily_report(db, daily_report_id: int) -> int:
     """
-    日報IDに紐づく inventory_tx（CONSUME/WASTE）を作り直す。
+    日報IDに紐づく inventory_tx（CONSUME）を作り直す。
     return: 作成したtx件数
     """
     rep = db.execute(
         """
-        SELECT daily_report_id, report_date, sold_batches, waste_pieces
+        SELECT daily_report_id, report_date, sold_batches
         FROM daily_reports
         WHERE daily_report_id = ?
         """,
@@ -1586,10 +1570,6 @@ def regenerate_inventory_tx_for_daily_report(db, daily_report_id: int) -> int:
 
     report_date = rep["report_date"]  # 'YYYY-MM-DD'
     sold_batches = float(rep["sold_batches"] or 0)
-    waste_pieces = int(rep["waste_pieces"] or 0)
-
-    pieces_per_batch = get_active_pieces_per_batch(db)
-    waste_batches = (waste_pieces / pieces_per_batch) if pieces_per_batch > 0 else 0.0
 
     happened_at = f"{report_date} 09:00:00"
     location = "STORE"
@@ -1626,9 +1606,6 @@ def regenerate_inventory_tx_for_daily_report(db, daily_report_id: int) -> int:
         # 通常消費（売れたバッチ数分）
         consume_qty = qty_per_batch * sold_batches
 
-        # ロス消費（ロス個数→バッチ換算→消費量）
-        waste_qty = qty_per_batch * waste_batches
-
         # マイナスで在庫を減らす
         if abs(consume_qty) > 1e-9:
             db.execute(
@@ -1649,25 +1626,6 @@ def regenerate_inventory_tx_for_daily_report(db, daily_report_id: int) -> int:
             )
             created += 1
 
-        if abs(waste_qty) > 1e-9:
-            db.execute(
-                """
-                INSERT INTO inventory_tx
-                  (happened_at, item_id, qty_delta, tx_type, location, ref_type, ref_id, note)
-                VALUES
-                  (?, ?, ?, 'WASTE', ?, 'DAILY_REPORT', ?, ?)
-                """,
-                (
-                    happened_at,
-                    item_id,
-                    -waste_qty,
-                    location,
-                    daily_report_id,
-                    f"日報自動ロス：waste_pieces={waste_pieces}（{waste_batches:.3f} batches）",
-                ),
-            )
-            created += 1
-
     return created
 
 
@@ -1676,7 +1634,7 @@ def daily_reports_list():
     db = get_db()
     rows = db.execute(
         """
-        SELECT daily_report_id, report_date, sold_batches, waste_pieces, production_minutes, sales_amount
+        SELECT daily_report_id, report_date, sold_batches, production_minutes, sales_amount
         FROM daily_reports
         ORDER BY report_date DESC, daily_report_id DESC
         """
@@ -1700,7 +1658,7 @@ def daily_report_create():
         return redirect(url_for("daily_report_new"))
 
     sold_batches = float((request.form.get("sold_batches") or "0").strip() or 0)
-    waste_pieces = int((request.form.get("waste_pieces") or "0").strip() or 0)
+    waste_pieces = 0
     production_minutes = float(
         (request.form.get("production_minutes") or "0").strip() or 0
     )
@@ -1777,7 +1735,7 @@ def daily_report_update(daily_report_id: int):
 
     report_date = (request.form.get("report_date") or "").strip()
     sold_batches = float((request.form.get("sold_batches") or "0").strip() or 0)
-    waste_pieces = int((request.form.get("waste_pieces") or "0").strip() or 0)
+    waste_pieces = 0
     production_minutes = float(
         (request.form.get("production_minutes") or "0").strip() or 0
     )
