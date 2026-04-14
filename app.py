@@ -3385,6 +3385,8 @@ def shopping_list():
             shortage = max(reorder_point - qty, 0.0)
             step = 1.0 if (r["unit_base"] == "pcs") else 0.01
             order_qty = ceil_to_step(shortage, step)
+            if order_qty <= 1e-9:
+                continue
             ref_price = float(r["ref_unit_price"] or 0)
             est_amount = order_qty * ref_price
             est_sum += est_amount
@@ -3404,7 +3406,8 @@ def shopping_list():
                     "is_fixed": r["is_fixed"],
                 }
             )
-        grouped.append({"supplier_name": supplier_name, "items": items, "est_sum": est_sum})
+        if items:
+            grouped.append({"supplier_name": supplier_name, "items": items, "est_sum": est_sum})
 
     return render_template(
         "shopping_list.html",
