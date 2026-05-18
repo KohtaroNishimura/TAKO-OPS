@@ -3404,7 +3404,6 @@ def monthly_food_cost():
         (location, month_start),
     ).fetchone()
 
-    is_cutover_month = False
     if begin_st is None:
         # 運用開始月：月内の最初のMONTHLYを期首扱いにする
         begin_st = db.execute(
@@ -3420,8 +3419,6 @@ def monthly_food_cost():
             """,
             (location, month_start, month_end),
         ).fetchone()
-        if begin_st:
-            is_cutover_month = True
 
     begin_value = 0.0
     begin_taken_at = None
@@ -3493,15 +3490,6 @@ def monthly_food_cost():
     else:
         end_missing = True
 
-    effective_start = month_start
-    if is_cutover_month and begin_st:
-        effective_start = begin_st["taken_at"]
-
-    effective_end = month_end
-    if end_st:
-        # 期末棚卸より後は「翌月在庫」になるので、期間末を期末棚卸時点に寄せる
-        effective_end = end_st["taken_at"]
-
     # 当月仕入金額（FOODのみ）
     # unit_price未入力はref_unit_priceで代用し、件数も取る
     purchases_row = db.execute(
@@ -3523,7 +3511,7 @@ def monthly_food_cost():
           AND datetime(p.purchased_at) >= datetime(?)
           AND datetime(p.purchased_at) < datetime(?)
         """,
-        (effective_start, effective_end),
+        (month_start, month_end),
     ).fetchone()
     purchases_cost = purchases_row["purchase_amount"]
     used_ref_count = int(purchases_row["used_ref_count"] or 0)
@@ -3558,7 +3546,7 @@ def monthly_food_cost():
         GROUP BY i.item_id
         ORDER BY amount DESC, i.name ASC
         """,
-        (effective_start, effective_end),
+        (month_start, month_end),
     ).fetchall()
 
     # 原価計算
