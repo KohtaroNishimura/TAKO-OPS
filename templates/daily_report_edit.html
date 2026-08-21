@@ -7,8 +7,8 @@
     <label>日付</label>
     <input type="date" name="report_date" value="{{ rep['report_date'] }}" required>
 
-    <label>売れたバッチ数（0.1刻み）</label>
-    <input type="number" name="sold_batches" step="0.1" min="0" value="{{ rep['sold_batches'] or 0 }}">
+    <label>売れたバッチ数（0.01刻み）</label>
+    <input type="number" name="sold_batches" step="0.01" min="0" value="{{ rep['sold_batches'] or 0 }}">
 
     <label>生産時間（時間・0.1刻み）</label>
     <input type="number" name="production_minutes" step="0.1" min="0" value="{{ "%.1f"|format(rep['production_minutes'] or 0) }}">
